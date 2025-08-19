@@ -281,6 +281,14 @@ async def home():
     </Response>'''
     
     return Response(xml_data, mimetype='application/xml')
+
+
+@app.route("/test", methods=["GET", "POST"])
+async def test():
+    print("Test endpoint hit!")
+    print("Form data:", await request.form)
+    return Response("Test successful", mimetype='text/plain')
+
 @app.websocket('/media-stream')
 async def handle_message():
     print('Client connected')
