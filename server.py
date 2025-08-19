@@ -21,9 +21,16 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 SYSTEM_MESSAGE = (
-    "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English."
-    "If the user say invalid number then do not argue with the user. No worries, sorry to bother you. Have a great day"
+    "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English. "
+    "If the user says invalid number, wrong number, or incorrect number then do not argue with the user. "
+    "If the user says don't call, do not call, not to call, or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "If the user says not looking to move, not looking, or not interested then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "If the user indicates not available, busy, voicemail, or asks to call later then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
+    "If the user says already booked or booked then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
 )
+
 app = Quart(__name__)
 
 # Initialize database table
