@@ -25,6 +25,7 @@ SYSTEM_MESSAGE = (
     "If the user say invalid number then do not argue with the user. No worries, sorry to bother you. Have a great day"
 )
 app = Quart(__name__)
+
 # Initialize database table
 def initialize_database():
     conn = get_db_connection()
@@ -53,6 +54,7 @@ def initialize_database():
                 conn.close()
     else:
         print("Failed to get database connection for initialization")
+
 # Function to log conversation to database
 def log_conversation_to_db(lead_id, conversation_id, speaker, content):
     conn = get_db_connection()
@@ -74,6 +76,7 @@ def log_conversation_to_db(lead_id, conversation_id, speaker, content):
                 conn.close()
     else:
         print("Failed to get database connection")
+
 # Async wrapper for database logging
 async def log_conversation(lead_id, conversation_id, speaker, content):
     loop = asyncio.get_event_loop()
@@ -83,6 +86,7 @@ async def log_conversation(lead_id, conversation_id, speaker, content):
             log_conversation_to_db, 
             lead_id, conversation_id, speaker, content
         )
+
 # Function to hang up call using Plivo API
 async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text"):
     if not PLIVO_AUTH_ID or not PLIVO_AUTH_TOKEN:
@@ -127,6 +131,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     <Redirect method="POST">{escaped_url}</Redirect>
 </Response>'''
     return Response(text=content, status=200, content_type="text/xml")
+
 # Function to check disposition based on user input
 def check_disposition(transcript):
     transcript_lower = transcript.lower()
@@ -161,6 +166,7 @@ def check_disposition(transcript):
     
     # Default disposition
     return 6, None
+
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
@@ -176,12 +182,12 @@ async def home():
     voice_id = 'CwhRBWXzGAHq8TQ4Fs17'
     audio = 'plivoai/vanline_inbound.mp3'
     audio_message = "HI, This is ai-agent. Tell me what can i help you?"
+    ai_agent_id = None  # Initialize ai_agent_id
     
     # Database queries using mysql.connector
     conn = get_db_connection()
     if conn:
         try:
-            prompt_text = None
             cursor = conn.cursor(dictionary=True)
             
             # Query lead data
@@ -208,16 +214,9 @@ async def home():
                 ai_agent = cursor.fetchone()
                 
                 if ai_agent:
-                    cursor.execute("SELECT * FROM ai_agent_prompts WHERE ai_agent_id = %s and is_active = 1", (ai_agent['id'],))
-                    ai_agent_prompt = cursor.fetchone()
-                    if ai_agent_prompt:
-                        prompt_text = ai_agent_prompt['prompt_text']
-                        if lead_data:
-                            for key, value in lead_data.items():
-                                # Remove 'lead_' prefix if present
-                                placeholder = f"[lead_{key}]"  # Add 'lead_' prefix to match prompt
-                                prompt_text = prompt_text.replace(placeholder, str(value))
-                #print(f"Prompt text: {prompt_text}")
+                    ai_agent_id = ai_agent['id']  # Get the ai_agent_id
+                    # Note: We're no longer fetching the prompt here
+                    
                 if brand_voice:
                     cursor.execute("SELECT * FROM mst_voiceid WHERE voice_id = %s", (brand_voice['voice_id'],))
                     voice = cursor.fetchone()
@@ -227,7 +226,6 @@ async def home():
                             voice_id = voice['voice_prompt_id']
                 
                 # Audio selection logic
-                
                 if brand_id == 1:
                     audio = 'plivoai/vanline_inbound.mp3'
                     if lead_data and lead_data['type'] == "outbound":
@@ -235,7 +233,7 @@ async def home():
                 elif brand_id == 2:
                     audio = 'plivoai/interstates_inbound.mp3'
                     if lead_data and lead_data['type'] == "outbound":
-                        audio_message = f"HI, This is {ai_agent['agent_name']}. Am I speaking to {lead_data['name']}?"
+                        audio_message = f"HI, This is {ai_agent['agent_name'] if ai_agent else 'AI Agent'}. Am I speaking to {lead_data['name']}?"
                         audio = "plivoai/customer1.mp3"
                         
         except Exception as e:
@@ -246,20 +244,11 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
-    print(f"agent_id: {ai_agent['id'] if ai_agent else 'N/A'}")
+    print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     
-    # Use custom prompt if available, combined with SYSTEM_MESSAGE
-    if prompt_text:
-        prompt_to_use = f"{SYSTEM_MESSAGE}\n\n{prompt_text}"
-    else:
-        prompt_to_use = SYSTEM_MESSAGE
-    # Store prompt in a global dictionary keyed by call_uuid
-    if not hasattr(app, 'call_prompts'):
-        app.call_prompts = {}
-    app.call_prompts[call_uuid] = prompt_to_use
+    # Note: We're no longer storing the prompt in a global dictionary
     
     # print(f"lead_id: {lead_id}")
-    print(f"prompt_text: {prompt_to_use}")
     
     ws_url = (
     f"wss://{request.host}/media-stream?"
@@ -269,6 +258,7 @@ async def home():
     f"&amp;To={to_number}"
     f"&amp;lead_id={lead_id}"
     f"&amp;voice_name={voice_name}"
+    f"&amp;ai_agent_id={ai_agent_id}"  # Add ai_agent_id to the URL
     )              
     
     # XML response
@@ -282,7 +272,6 @@ async def home():
     
     return Response(xml_data, mimetype='application/xml')
 
-
 @app.route("/test", methods=["GET", "POST"])
 async def test():
     print("Test endpoint hit!")
@@ -295,11 +284,13 @@ async def handle_message():
     plivo_ws = websocket 
     audio_message = websocket.args.get('audio_message', "Hi this is verse How can i help you?")
     call_uuid = websocket.args.get('CallUUID', 'unknown')
-    prompt_text = getattr(app, 'call_prompts', {}).get(call_uuid, SYSTEM_MESSAGE)
     voice_name = websocket.args.get('voice_name', 'alloy')
+    ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
+    lead_id = websocket.args.get('lead_id', 'unknown')
+    
     print('audio_message', audio_message)
-    print('prompt_text', prompt_text)
     print('voice_name', voice_name)
+    print('ai_agent_id', ai_agent_id)
     
     # Initialize conversation state
     conversation_state = {
@@ -308,7 +299,7 @@ async def handle_message():
         'conversation_id': call_uuid,
         'from_number': websocket.args.get('From', ''),
         'to_number': websocket.args.get('To', ''),
-        'lead_id': websocket.args.get('lead_id', 'unknown'),
+        'lead_id': lead_id,
         'active_response': False,  # Track if there's an active response to cancel
         'response_items': {},  # Store response items by ID
         'pending_language_reminder': False,  # Flag to send language reminder after current response
@@ -321,6 +312,41 @@ async def handle_message():
         'disposition_audio_sent': False,  # Track if disposition audio has been sent
     }
     
+    # Fetch prompt_text from database using ai_agent_id
+    prompt_text = SYSTEM_MESSAGE  # Default to system message
+    if ai_agent_id:
+        conn = get_db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor(dictionary=True)
+                # Fetch the active prompt for this ai_agent
+                cursor.execute("SELECT * FROM ai_agent_prompts WHERE ai_agent_id = %s and is_active = 1", (ai_agent_id,))
+                ai_agent_prompt = cursor.fetchone()
+                if ai_agent_prompt:
+                    prompt_text = ai_agent_prompt['prompt_text']
+                    # If we have lead_id, fetch lead data and replace placeholders
+                    if lead_id and lead_id != 'unknown':
+                        try:
+                            lead_id_int = int(lead_id)
+                            cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id_int,))
+                            lead_data = cursor.fetchone()
+                            if lead_data:
+                                for key, value in lead_data.items():
+                                    placeholder = f"[lead_{key}]"
+                                    prompt_text = prompt_text.replace(placeholder, str(value))
+                        except (ValueError, TypeError):
+                            print(f"Invalid lead_id: {lead_id}")
+            except Exception as e:
+                print(f"Error fetching prompt in handle_message: {e}")
+            finally:
+                if conn.is_connected():
+                    cursor.close()
+                    conn.close()
+    
+    # Combine with SYSTEM_MESSAGE
+    prompt_to_use = f"{SYSTEM_MESSAGE}\n\n{prompt_text}"
+    print(f"prompt_text: {prompt_to_use}")
+    
     url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -332,7 +358,7 @@ async def handle_message():
             print('Connected to the OpenAI Realtime API')
             
             # Send session update first
-            await send_Session_update(openai_ws, prompt_text, voice_name)
+            await send_Session_update(openai_ws, prompt_to_use, voice_name)
             await asyncio.sleep(0.5)
             
             # Send the specific audio_message as initial prompt
@@ -364,6 +390,7 @@ async def handle_message():
         print("Connection closed by OpenAI server")
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
+
 async def receive_from_plivo(plivo_ws, openai_ws):
     try:
         while True:
@@ -384,6 +411,7 @@ async def receive_from_plivo(plivo_ws, openai_ws):
             await openai_ws.close()
     except Exception as e:
         print(f"Error during Plivo's websocket communication: {e}")
+
 async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
     try:
         response = json.loads(message)
@@ -810,6 +838,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
+
 async def send_Session_update(openai_ws, prompt_text, voice_name):
     session_update = {
         "type": "session.update",
@@ -840,6 +869,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
         }
     }
     await openai_ws.send(json.dumps(session_update))
+
 def function_call_output(arg, item_id, call_id):
     sum_val = int(arg['num1']) + int(arg['num2'])
     conversation_item = {
@@ -852,6 +882,7 @@ def function_call_output(arg, item_id, call_id):
         }
     }
     return conversation_item
+
 if __name__ == "__main__":
     print('Starting server to handle inbound Plivo calls...')
     initialize_database()
