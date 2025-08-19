@@ -810,7 +810,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 
                 # Hang up the call immediately after the disposition audio is done
                 print(f"[LOG] Hanging up call with disposition {conversation_state['disposition']}")
-                await asyncio.sleep(4)
+                await asyncio.sleep(1)
                 await hangup_call(
                     conversation_state['conversation_id'], 
                     conversation_state['disposition'], 
