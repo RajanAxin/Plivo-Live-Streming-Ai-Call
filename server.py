@@ -2,7 +2,11 @@ import plivo
 from quart import Quart, websocket, Response, request
 import asyncio
 import websockets
+import datetime
+import pytz
+import requests
 import json
+import logging
 import base64
 from dotenv import load_dotenv
 import os
@@ -25,10 +29,11 @@ SYSTEM_MESSAGE = (
     "If the user says invalid number, wrong number, or incorrect number then do not argue with the user. "
     "If the user says don't call, do not call, not to call, or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
     "If the user says not looking to move, not looking, or not interested then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    "If the user indicates not available, busy, voicemail, or asks to call later then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "If the user indicates not available, busy, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day'. "
     "If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
     "If the user says already booked or booked then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
     "If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
+    "If the user says are busy, am busy, busy, call me later, call me, call me at then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
 )
 
 app = Quart(__name__)
@@ -139,8 +144,25 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
 </Response>'''
     return Response(text=content, status=200, content_type="text/xml")
 
+
+
+def get_timezone_from_db(timezone_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT timezone FROM mst_timezone WHERE timezone_id = %s LIMIT 1", (timezone_id,))
+    row = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if row:
+        return row["timezone"]   # e.g., "Asia/Kolkata"
+    return None
+
+
 # Function to check disposition based on user input
-def check_disposition(transcript):
+def check_disposition(transcript, lead_timezone):
     transcript_lower = transcript.lower()
     
     # Pattern 1: Do not call
@@ -157,7 +179,18 @@ def check_disposition(transcript):
     
     # Pattern 4: Not available
     elif re.search(r"\b(not available|hang up or press|reached the maximum time allowed to make your recording|at the tone|record your message|voicemail|voice mail|leave your message|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
-        return 6, "No worries, sorry to bother you. Have a great day"
+        
+        # Check if it's a busy/call me later pattern that might have a datetime
+        if re.search(r"\b(are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
+            followup_datetime = get_followup_datetime(transcript_lower, lead_timezone)
+            print(f'🎤 Lead Timezone: {lead_timezone}')
+            print(f'🎤 Followup DateTime: {followup_datetime}')
+            
+            if followup_datetime:
+                return 4, "I will call you later. Nice to talk with you. Have a great day."
+        
+        # Default response for voicemail or no datetime found
+        return 6, "I will call you later. Nice to talk with you. Have a great day."
     
     # Pattern 5: Truck rental
     elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
@@ -174,6 +207,61 @@ def check_disposition(transcript):
     # Default disposition
     return 6, None
 
+def get_followup_datetime(user_speech, timezone_id: int):
+    # Fetch timezone from DB
+    tz_name = get_timezone_from_db(timezone_id)
+    if not tz_name:
+        logging.error(f"No timezone found for ID: {timezone_id}")
+        return None
+
+    tz = pytz.timezone(tz_name)
+    current_datetime = datetime.datetime.now(tz).strftime("%m/%d/%Y %I:%M %p")
+    print(f"Speech: {user_speech} -- {current_datetime}")
+    logging.info(f"Speech: {user_speech} -- {current_datetime}")
+
+    system_prompt = f"""
+    You are a date/time parser. Extract exact datetime from user message and return valid JSON like: {{"datetime": "MM/DD/YYYY HH:MM AM/PM"}}.
+    If no datetime, use null.
+
+    Instructions:
+    - Assume today date and time is: {current_datetime}
+    - If the user says "after half an hour","tomorrow evening","after 15 minutes","next month", "after 15th", "next week", etc., calculate based on this current date.
+    - Do NOT return any year earlier than 2025.
+    - If no time is mentioned, use current time from today: {current_datetime}
+    - If user says "evening", use 06:00 PM. If "morning", use 09:00 AM. If "afternoon", use 01:00 PM. If "night", use 08:00 PM.
+    """
+
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "gpt-4o",
+                "temperature": 0.2,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_speech}
+                ]
+            },
+            timeout=60
+        )
+
+        if response.status_code == 200:
+            gpt_content = response.json()["choices"][0]["message"]["content"]
+            data = json.loads(gpt_content)
+            print(f'🎤 Followup Data: {data}')
+            return data.get("datetime")
+        else:
+            logging.error(f"OpenAI API failed: {response.text}")
+            return None
+
+    except Exception as e:
+        logging.error(f"Followup datetime error: {e}")
+        return None
+        
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
@@ -251,6 +339,7 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
+    lead_timezone = lead_data['t_timezone'] if lead_data else 0
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     
     # Note: We're no longer storing the prompt in a global dictionary
@@ -266,6 +355,7 @@ async def home():
     f"&amp;lead_id={lead_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_id={ai_agent_id}"  # Add ai_agent_id to the URL
+    f"&amp;lead_timezone={lead_timezone}"  # Add lead_timezone to the URL
     )              
     
     # XML response
@@ -294,10 +384,12 @@ async def handle_message():
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
     lead_id = websocket.args.get('lead_id', 'unknown')
+    lead_timezone = websocket.args.get('lead_timezone', 'unknown')
     
     print('audio_message', audio_message)
     print('voice_name', voice_name)
     print('ai_agent_id', ai_agent_id)
+    print('lead_timezone', lead_timezone)
     
     # Initialize conversation state
     conversation_state = {
@@ -306,6 +398,7 @@ async def handle_message():
         'conversation_id': call_uuid,
         'from_number': websocket.args.get('From', ''),
         'to_number': websocket.args.get('To', ''),
+        'lead_timezone': lead_timezone,
         'lead_id': lead_id,
         'active_response': False,  # Track if there's an active response to cancel
         'response_items': {},  # Store response items by ID
@@ -640,7 +733,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             )
             
             # Check for disposition phrases
-            disposition, disposition_message = check_disposition(transcript)
+            disposition, disposition_message = check_disposition(transcript, conversation_state['lead_timezone'])
             if disposition_message:  # Only process if disposition message is not None
                 print(f"[LOG] Detected disposition {disposition}: {disposition_message}")
                 conversation_state['disposition'] = disposition
