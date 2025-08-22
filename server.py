@@ -25,15 +25,13 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 SYSTEM_MESSAGE = (
+    "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
     "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English. "
-    "If the user says invalid number, wrong number, or incorrect number then do not argue with the user. "
-    "If the user says don't call, do not call, not to call, or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    "If the user says not looking to move, not looking, or not interested then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    "If the user indicates not available, busy, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day'. "
+    "If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "If the user says don't call, do not call, not to call, not looking to move, not looking, not interested or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
     "If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
-    "If the user says already booked or booked then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
     "If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
-    "If the user says are busy, am busy, busy, call me later, call me, call me at then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
+    "If the user says are busy, am busy, busy, call me later, call me, call me at, not available, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
 )
 
 app = Quart(__name__)
@@ -910,7 +908,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 
                 # Hang up the call immediately after the disposition audio is done
                 print(f"[LOG] Hanging up call with disposition {conversation_state['disposition']}")
-                await asyncio.sleep(4)
+                await asyncio.sleep(5)
                 await hangup_call(
                     conversation_state['conversation_id'], 
                     conversation_state['disposition'], 
