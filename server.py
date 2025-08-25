@@ -26,6 +26,7 @@ if not OPENAI_API_KEY:
 PORT = 5000
 SYSTEM_MESSAGE = (
     "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue talking or ask follow-up questions unless the user responds first. "
+    "CRITICAL: When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Do NOT attach any other sentence, reason, or context to that utterance. Then STOP and wait for the user to respond. "
     "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
     "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English. "
     "IMPORTANT: If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
@@ -422,6 +423,10 @@ async def handle_message():
         'ai_currently_speaking': False,  # Track if AI is currently speaking audio
         'response_audio_complete': False,  # Track if response.audio.done fired
         'response_transcript_complete': False,  # Track if response.audio_transcript.done fired
+        'last_agent_ended_with_question': False,  # Whether last AI message ended with '?'
+        'last_timeout_duration': None,  # The actual last timeout duration used (secs)
+        'last_assistant_text': '',  # Last full AI utterance logged
+        'delayed_timeout_task': None,  # Handle to delayed start task
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -467,10 +472,11 @@ async def handle_message():
     
     # Timeout handler function
     async def handle_timeout():
-        """Handle the 10-second timeout by sending 'Are you there?' message"""
+        """Handle timeout by sending 'Are you there?' message"""
         try:
             conversation_state['are_you_there_count'] += 1
-            timeout_duration = 10 if conversation_state['are_you_there_count'] == 1 else 10
+            # Use the last_timeout_duration recorded when timer started for accurate logs
+            timeout_duration = conversation_state.get('last_timeout_duration', 5 if conversation_state['are_you_there_count'] == 1 else 10)
             import time
             current_time = time.strftime("%H:%M:%S", time.localtime())
             print(f"[TIMEOUT] {timeout_duration} seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
@@ -522,29 +528,38 @@ async def handle_message():
     
     # Function to start timeout timer
     def start_timeout_timer():
-        """Start timeout timer - 5 seconds for first response, 10 seconds for 'Are you there?' responses"""
+        """Start timeout timer - initial wait 5s (or 10s if question), then 10s between 'Are you there?' prompts"""
         # Cancel existing timer if any
         if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
             print("[TIMEOUT] Cancelling existing timeout task")
             conversation_state['timeout_task'].cancel()
-        
+
         # Only start timer if we're not in a disposition flow and not already waiting
         if (not conversation_state.get('is_disposition_response', False) and
             not conversation_state.get('pending_hangup', False) and
             not conversation_state.get('waiting_for_user', False)):
 
-            # Determine timeout duration based on whether we've already said "Are you there?"
+            # Determine timeout duration
             if conversation_state['are_you_there_count'] == 0:
-                timeout_duration = 5  # First timeout: 5 seconds after AI response
-                timeout_msg = "5-second"
+                # First timeout after an AI response
+                if conversation_state.get('last_agent_ended_with_question', False):
+                    timeout_duration = 10
+                    timeout_msg = "10-second (question)"
+                else:
+                    timeout_duration = 5
+                    timeout_msg = "5-second"
             else:
-                timeout_duration = 10  # Subsequent timeouts: 10 seconds after "Are you there?"
+                # After 'Are you there?' we wait 10s
+                timeout_duration = 10
                 timeout_msg = "10-second"
+
+            # Persist for logging in handle_timeout
+            conversation_state['last_timeout_duration'] = timeout_duration
 
             print(f"[TIMEOUT] ⏰ Setting waiting_for_user=True and creating {timeout_msg} timeout task")
             conversation_state['waiting_for_user'] = True
             conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(timeout_duration))
-            
+
             # Schedule the timeout handler
             async def timeout_wrapper():
                 try:
@@ -559,7 +574,7 @@ async def handle_message():
                     print("[TIMEOUT] ❌ Timer cancelled")
                 except Exception as e:
                     print(f"[TIMEOUT] ❌ Timer error: {e}")
-            
+
             asyncio.create_task(timeout_wrapper())
         else:
             print(f"[TIMEOUT] ❌ Timer conditions not met:")
@@ -615,10 +630,30 @@ async def handle_message():
             if (not is_disposition and not pending_hangup and not user_speaking and not pending_language):
                 import time
                 current_time = time.strftime("%H:%M:%S", time.localtime())
-                print(f"[TIMEOUT] ✅ AI completely finished at {current_time} - starting timeout timer")
-                conversation_state['response_audio_complete'] = False
-                conversation_state['response_transcript_complete'] = False
-                start_timeout_timer()
+                print(f"[TIMEOUT] ✅ AI completely finished at {current_time} - scheduling timeout timer after grace period")
+
+                # Add a short grace delay to allow telephony buffers to drain
+                async def delayed_start():
+                    await asyncio.sleep(1.5)  # 1500ms grace period to allow buffers to drain
+                    # Re-check conditions before starting timer
+                    if (conversation_state.get('is_disposition_response', False) or
+                        conversation_state.get('pending_hangup', False) or
+                        conversation_state.get('user_speaking', False) or
+                        conversation_state.get('pending_language_reminder', False)):
+                        print("[TIMEOUT] ❌ Conditions changed during grace period - not starting timer")
+                        return
+                    # Reset completion flags before starting timer
+                    conversation_state['response_audio_complete'] = False
+                    conversation_state['response_transcript_complete'] = False
+                    start_timeout_timer()
+
+                # Cancel any previous delayed timeout starter
+                if conversation_state.get('delayed_timeout_task') and not conversation_state['delayed_timeout_task'].done():
+                    try:
+                        conversation_state['delayed_timeout_task'].cancel()
+                    except Exception:
+                        pass
+                conversation_state['delayed_timeout_task'] = asyncio.create_task(delayed_start())
             else:
                 print(f"[TIMEOUT] ❌ AI finished but conditions not met - timer NOT started")
     
@@ -816,6 +851,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     'assistant',
                     transcript
                 )
+                # Track last assistant text and whether it ended with a question
+                conversation_state['last_assistant_text'] = transcript.strip()
+                conversation_state['last_agent_ended_with_question'] = conversation_state['last_assistant_text'].endswith('?')
             else:
                 print(f"[LOG] AI Audio Transcript: {conversation_state['ai_transcript']}")
                 # Log to database
@@ -825,6 +863,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     'assistant',
                     conversation_state['ai_transcript']
                 )
+                conversation_state['last_assistant_text'] = conversation_state['ai_transcript'].strip()
+                conversation_state['last_agent_ended_with_question'] = conversation_state['last_assistant_text'].endswith('?')
             conversation_state['ai_transcript'] = ''
 
             # Mark that transcript is complete and check if we can start timer
