@@ -29,11 +29,11 @@ SYSTEM_MESSAGE = (
     "CRITICAL: When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Do NOT attach any other sentence, reason, or context to that utterance. Then STOP and wait for the user to respond. "
     "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
     "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English. "
-    #"IMPORTANT: If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    #"IMPORTANT: If the user says don't call, do not call, not to call, not looking to move, not looking, not interested or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    #"IMPORTANT: If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
-    #"IMPORTANT: If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
-    #"IMPORTANT: If the user says are busy, am busy, busy, call me later, call me, call me at, not available, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
+    "IMPORTANT: If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "IMPORTANT: If the user says don't call, do not call, not to call, not looking to move, not looking, not interested or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    "IMPORTANT: If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
+    "IMPORTANT: If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
+    "IMPORTANT: If the user says are busy, am busy, busy, call me later, call me, call me at, not available, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
     "Be helpful and professional in your responses. Wait for the user to speak before responding."
 )
 
@@ -168,15 +168,15 @@ def check_disposition(transcript, lead_timezone):
     
     # Pattern 1: Do not call
     if re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
-        return 2, "No worries, sorry to bother you. Have a great day"
+        return 2, ""
     
     # Pattern 2: Wrong number
     elif re.search(r"\b(wrong number|invalid number|incorrect number)\b", transcript_lower):
-        return 7, "No worries, sorry to bother you. Have a great day"
+        return 7, ""
     
     # Pattern 3: Not interested
     elif re.search(r"\b(not looking to move|not looking|not interested)\b", transcript_lower):
-        return 3, "No worries, sorry to bother you. Have a great day"
+        return 3, ""
     
     # Pattern 4: Not available
     elif re.search(r"\b(not available|hang up or press|reached the maximum time allowed to make your recording|at the tone|record your message|voicemail|voice mail|leave your message|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
@@ -188,22 +188,22 @@ def check_disposition(transcript, lead_timezone):
             print(f'🎤 Followup DateTime: {followup_datetime}')
             
             if followup_datetime:
-                return 4, "I will call you later. Nice to talk with you. Have a great day."
+                return 4, ""
         
         # Default response for voicemail or no datetime found
-        return 6, "I will call you later. Nice to talk with you. Have a great day."
+        return 6, ""
     
     # Pattern 5: Truck rental
     elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
-        return 13, "We are providing moving services, sorry to bother you. Have a great day"
+        return 13, ""
     
     # Pattern 6: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
-        return 8, "No worries, sorry to bother you. Have a great day"
+        return 8, ""
     
     # Pattern 7: Goodbye
     elif re.search(r"\b(bye|goodbye|good bye|take care|see you)\b", transcript_lower):
-        return 6, "Nice to talk with you. Have a great day"
+        return 6, ""
     
     # Default disposition
     return 6, None
