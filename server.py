@@ -25,13 +25,16 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 SYSTEM_MESSAGE = (
+    "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue talking or ask follow-up questions unless the user responds first. "
+    "CRITICAL: When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Do NOT attach any other sentence, reason, or context to that utterance. Then STOP and wait for the user to respond. "
     "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
     "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English. "
-    "If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    "If the user says don't call, do not call, not to call, not looking to move, not looking, not interested or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    "If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
-    "If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
-    "If the user says are busy, am busy, busy, call me later, call me, call me at, not available, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
+    #"IMPORTANT: If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    #"IMPORTANT: If the user says don't call, do not call, not to call, not looking to move, not looking, not interested or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
+    #"IMPORTANT: If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
+    #"IMPORTANT: If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
+    #"IMPORTANT: If the user says are busy, am busy, busy, call me later, call me, call me at, not available, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
+    "Be helpful and professional in your responses. Wait for the user to speak before responding."
 )
 
 app = Quart(__name__)
@@ -408,6 +411,22 @@ async def handle_message():
         'is_disposition_response': False,  # Track if current response is a disposition response
         'disposition_response_id': None,  # Store the ID of the disposition response
         'disposition_audio_sent': False,  # Track if disposition audio has been sent
+        # New timeout-related state
+        'timeout_task': None,  # Track the timeout task
+        'waiting_for_user': False,  # Flag to indicate if we're waiting for user response
+        'user_speaking': False,  # Track if user is currently speaking
+        'last_ai_response_time': None,  # Track when AI finished speaking
+        'are_you_there_count': 0,  # Count how many times "Are you there?" has been said
+        'max_are_you_there': 3,  # Maximum times to say "Are you there?" before disconnecting
+        'is_initial_greeting': True,  # Track if this is the initial AI greeting
+        'is_are_you_there_response': False,  # Track if current response is an "Are you there?" response
+        'ai_currently_speaking': False,  # Track if AI is currently speaking audio
+        'response_audio_complete': False,  # Track if response.audio.done fired
+        'response_transcript_complete': False,  # Track if response.audio_transcript.done fired
+        'last_agent_ended_with_question': False,  # Whether last AI message ended with '?'
+        'last_timeout_duration': None,  # The actual last timeout duration used (secs)
+        'last_assistant_text': '',  # Last full AI utterance logged
+        'delayed_timeout_task': None,  # Handle to delayed start task
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -451,6 +470,193 @@ async def handle_message():
         "OpenAI-Beta": "realtime=v1",
     }
     
+    # Timeout handler function
+    async def handle_timeout():
+        """Handle timeout by sending 'Are you there?' message"""
+        try:
+            conversation_state['are_you_there_count'] += 1
+            # Use the last_timeout_duration recorded when timer started for accurate logs
+            timeout_duration = conversation_state.get('last_timeout_duration', 5 if conversation_state['are_you_there_count'] == 1 else 10)
+            import time
+            current_time = time.strftime("%H:%M:%S", time.localtime())
+            print(f"[TIMEOUT] {timeout_duration} seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
+            
+            # Reset timeout state
+            conversation_state['timeout_task'] = None
+            conversation_state['waiting_for_user'] = False
+            
+            # Check if we've reached the maximum attempts
+            if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
+                print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
+                
+                # Set disposition for no response and prepare to hang up
+                conversation_state['disposition'] = 6  # Default disposition for no response
+                conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
+                
+                # Create final goodbye message before hanging up
+                goodbye_response = {
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["text", "audio"],
+                        "temperature": 0.8,
+                        "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
+                    }
+                }
+                await openai_ws.send(json.dumps(goodbye_response))
+                conversation_state['active_response'] = True
+                conversation_state['is_disposition_response'] = True
+                conversation_state['disposition_response_id'] = None
+                conversation_state['disposition_audio_sent'] = False
+                return
+            
+            # Create timeout response for "Are you there?"
+            timeout_response = {
+                "type": "response.create",
+                "response": {
+                    "modalities": ["text", "audio"],
+                    "temperature": 0.8,
+                    "instructions": "Say exactly: 'Are you there?' in a friendly tone and wait for their response."
+                }
+            }
+            await openai_ws.send(json.dumps(timeout_response))
+            conversation_state['active_response'] = True
+            # Mark this as an "Are you there?" response so we can restart timer after it completes
+            conversation_state['is_are_you_there_response'] = True
+            
+        except Exception as e:
+            print(f"[TIMEOUT] Error handling timeout: {e}")
+    
+    # Function to start timeout timer
+    def start_timeout_timer():
+        """Start timeout timer - initial wait 5s (or 10s if question), then 10s between 'Are you there?' prompts"""
+        # Cancel existing timer if any
+        if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
+            print("[TIMEOUT] Cancelling existing timeout task")
+            conversation_state['timeout_task'].cancel()
+
+        # Only start timer if we're not in a disposition flow and not already waiting
+        if (not conversation_state.get('is_disposition_response', False) and
+            not conversation_state.get('pending_hangup', False) and
+            not conversation_state.get('waiting_for_user', False)):
+
+            # Determine timeout duration
+            if conversation_state['are_you_there_count'] == 0:
+                # First timeout after an AI response
+                if conversation_state.get('last_agent_ended_with_question', False):
+                    timeout_duration = 10
+                    timeout_msg = "10-second (question)"
+                else:
+                    timeout_duration = 5
+                    timeout_msg = "5-second"
+            else:
+                # After 'Are you there?' we wait 10s
+                timeout_duration = 10
+                timeout_msg = "10-second"
+
+            # Persist for logging in handle_timeout
+            conversation_state['last_timeout_duration'] = timeout_duration
+
+            print(f"[TIMEOUT] ⏰ Setting waiting_for_user=True and creating {timeout_msg} timeout task")
+            conversation_state['waiting_for_user'] = True
+            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(timeout_duration))
+
+            # Schedule the timeout handler
+            async def timeout_wrapper():
+                try:
+                    print(f"[TIMEOUT] ⏱️ Starting {timeout_msg} countdown...")
+                    await conversation_state['timeout_task']
+                    if conversation_state.get('waiting_for_user', False):
+                        print(f"[TIMEOUT] ⏰ {timeout_duration} seconds elapsed! Calling handle_timeout()")
+                        await handle_timeout()
+                    else:
+                        print(f"[TIMEOUT] ⏰ Timer completed but waiting_for_user=False, not calling handle_timeout")
+                except asyncio.CancelledError:
+                    print("[TIMEOUT] ❌ Timer cancelled")
+                except Exception as e:
+                    print(f"[TIMEOUT] ❌ Timer error: {e}")
+
+            asyncio.create_task(timeout_wrapper())
+        else:
+            print(f"[TIMEOUT] ❌ Timer conditions not met:")
+            print(f"  - is_disposition_response: {conversation_state.get('is_disposition_response', False)}")
+            print(f"  - pending_hangup: {conversation_state.get('pending_hangup', False)}")
+            print(f"  - waiting_for_user: {conversation_state.get('waiting_for_user', False)}")
+    
+    # Function to cancel timeout timer
+    def cancel_timeout_timer():
+        """Cancel the timeout timer"""
+        if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
+            conversation_state['timeout_task'].cancel()
+            print("[TIMEOUT] ❌ Timer cancelled - user activity detected")
+        else:
+            print("[TIMEOUT] ❌ Timer cancel requested but no active timer")
+        conversation_state['waiting_for_user'] = False
+        conversation_state['timeout_task'] = None
+        # Reset completion flags
+        conversation_state['response_audio_complete'] = False
+        conversation_state['response_transcript_complete'] = False
+
+    # Function to check if AI response is completely done and start timer
+    def check_and_start_timeout_timer():
+        """Start timeout timer only when both audio and transcript are complete"""
+        if (conversation_state.get('response_audio_complete', False) and
+            conversation_state.get('response_transcript_complete', False)):
+
+            print("[TIMEOUT] ✅ Both audio and transcript complete - AI completely finished")
+
+            # Check if this is the initial greeting - don't start timeout for initial greeting
+            if conversation_state.get('is_initial_greeting', False):
+                print("[TIMEOUT] ✅ AI finished initial greeting completely - NOT starting timeout timer")
+                conversation_state['is_initial_greeting'] = False
+                conversation_state['response_audio_complete'] = False
+                conversation_state['response_transcript_complete'] = False
+                return
+
+            # Check if this was an "Are you there?" response
+            if conversation_state.get('is_are_you_there_response', False):
+                print("[TIMEOUT] 'Are you there?' completely finished, restarting timeout timer")
+                conversation_state['is_are_you_there_response'] = False
+                conversation_state['response_audio_complete'] = False
+                conversation_state['response_transcript_complete'] = False
+                start_timeout_timer()
+                return
+
+            # Start timeout timer for normal responses
+            is_disposition = conversation_state.get('is_disposition_response', False)
+            pending_hangup = conversation_state.get('pending_hangup', False)
+            user_speaking = conversation_state.get('user_speaking', False)
+            pending_language = conversation_state.get('pending_language_reminder', False)
+
+            if (not is_disposition and not pending_hangup and not user_speaking and not pending_language):
+                import time
+                current_time = time.strftime("%H:%M:%S", time.localtime())
+                print(f"[TIMEOUT] ✅ AI completely finished at {current_time} - scheduling timeout timer after grace period")
+
+                # Add a short grace delay to allow telephony buffers to drain
+                async def delayed_start():
+                    await asyncio.sleep(1.5)  # 1500ms grace period to allow buffers to drain
+                    # Re-check conditions before starting timer
+                    if (conversation_state.get('is_disposition_response', False) or
+                        conversation_state.get('pending_hangup', False) or
+                        conversation_state.get('user_speaking', False) or
+                        conversation_state.get('pending_language_reminder', False)):
+                        print("[TIMEOUT] ❌ Conditions changed during grace period - not starting timer")
+                        return
+                    # Reset completion flags before starting timer
+                    conversation_state['response_audio_complete'] = False
+                    conversation_state['response_transcript_complete'] = False
+                    start_timeout_timer()
+
+                # Cancel any previous delayed timeout starter
+                if conversation_state.get('delayed_timeout_task') and not conversation_state['delayed_timeout_task'].done():
+                    try:
+                        conversation_state['delayed_timeout_task'].cancel()
+                    except Exception:
+                        pass
+                conversation_state['delayed_timeout_task'] = asyncio.create_task(delayed_start())
+            else:
+                print(f"[TIMEOUT] ❌ AI finished but conditions not met - timer NOT started")
+    
     try: 
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('Connected to the OpenAI Realtime API')
@@ -466,30 +672,33 @@ async def handle_message():
                     "modalities": ["audio", "text"],
                     "temperature": 0.8,
                     "instructions": (
-                        f"DO NOT ask for identity confirmation. "
-                        f"Start with this exact phrase: '{audio_message}' "
-                        f"Then continue naturally."
+                        f"Say exactly: '{audio_message}' "
+                        f"Then STOP speaking and wait for the user to respond. "
+                        f"Do NOT continue talking or ask additional questions."
                     )
                 }
             }
             await openai_ws.send(json.dumps(initial_prompt))
             conversation_state['active_response'] = True  # Mark that we have an active response
             
-            receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
+            receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws, conversation_state))
             
             async for message in openai_ws:
-                await receive_from_openai(message, plivo_ws, openai_ws, conversation_state)
+                await receive_from_openai(message, plivo_ws, openai_ws, conversation_state, start_timeout_timer, cancel_timeout_timer, check_and_start_timeout_timer)
             
             await receive_task
     
     except asyncio.CancelledError:
         print('Client disconnected')
+        cancel_timeout_timer()  # Clean up timeout on disconnect
     except websockets.ConnectionClosed:
         print("Connection closed by OpenAI server")
+        cancel_timeout_timer()  # Clean up timeout on disconnect
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
+        cancel_timeout_timer()  # Clean up timeout on error
 
-async def receive_from_plivo(plivo_ws, openai_ws):
+async def receive_from_plivo(plivo_ws, openai_ws, conversation_state):
     try:
         while True:
             message = await plivo_ws.receive()
@@ -510,14 +719,16 @@ async def receive_from_plivo(plivo_ws, openai_ws):
     except Exception as e:
         print(f"Error during Plivo's websocket communication: {e}")
 
-async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
+async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, start_timeout_timer, cancel_timeout_timer, check_and_start_timeout_timer):
     try:
         response = json.loads(message)
         event_type = response.get('type', 'unknown')
         
         # Log all event types for debugging (except audio deltas to reduce noise)
-        if event_type not in ['response.audio.delta', 'response.audio.done']:
+        if event_type not in ['response.audio.delta']:
             print(f"[DEBUG] Received event: {event_type}")
+            if event_type in ['response.done', 'response.audio.done']:
+                print(f"[DEBUG] Event details: active_response={conversation_state.get('active_response')}, is_initial_greeting={conversation_state.get('is_initial_greeting')}")
         
         # Handle AI text responses
         if event_type == 'response.text.delta':
@@ -640,6 +851,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     'assistant',
                     transcript
                 )
+                # Track last assistant text and whether it ended with a question
+                conversation_state['last_assistant_text'] = transcript.strip()
+                conversation_state['last_agent_ended_with_question'] = conversation_state['last_assistant_text'].endswith('?')
             else:
                 print(f"[LOG] AI Audio Transcript: {conversation_state['ai_transcript']}")
                 # Log to database
@@ -649,7 +863,14 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     'assistant',
                     conversation_state['ai_transcript']
                 )
+                conversation_state['last_assistant_text'] = conversation_state['ai_transcript'].strip()
+                conversation_state['last_agent_ended_with_question'] = conversation_state['last_assistant_text'].endswith('?')
             conversation_state['ai_transcript'] = ''
+
+            # Mark that transcript is complete and check if we can start timer
+            print("[TIMEOUT] AI transcript done - marking transcript complete")
+            conversation_state['response_transcript_complete'] = True
+            check_and_start_timeout_timer()
             
         # Handle response creation
         elif event_type == 'response.created':
@@ -667,6 +888,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         elif event_type == 'response.done':
             response_id = response.get('response', {}).get('id', '')
             print(f"[LOG] Response completed with ID: {response_id}")
+            print(f"[DEBUG] response.done - is_disposition_response: {conversation_state.get('is_disposition_response', False)}")
+            print(f"[DEBUG] response.done - is_are_you_there_response: {conversation_state.get('is_are_you_there_response', False)}")
+            print(f"[DEBUG] response.done - is_initial_greeting: {conversation_state.get('is_initial_greeting', False)}")
             conversation_state['active_response'] = False
             
             # Check if this is a disposition response
@@ -674,6 +898,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 print(f"[DEBUG] Disposition response completed, waiting for audio to be played")
                 # Don't reset disposition tracking yet
                 # Don't hang up here, wait for audio to be played
+                return
+
+            # Check if this was an "Are you there?" response
+            if conversation_state.get('is_are_you_there_response', False):
+                print(f"[TIMEOUT] 'Are you there?' response completed, will restart timer after audio finishes")
+                # Don't start timer here, wait for audio to complete
                 return
             
             # Log any remaining response items
@@ -688,6 +918,21 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 )
             conversation_state['response_items'] = {}
             
+            # Debug: Check all conditions for starting timeout timer
+            is_disposition = conversation_state.get('is_disposition_response', False)
+            pending_hangup = conversation_state.get('pending_hangup', False)
+            user_speaking = conversation_state.get('user_speaking', False)
+            pending_language = conversation_state.get('pending_language_reminder', False)
+            
+            print(f"[TIMEOUT DEBUG] Checking conditions:")
+            print(f"  - is_disposition_response: {is_disposition}")
+            print(f"  - pending_hangup: {pending_hangup}")
+            print(f"  - user_speaking: {user_speaking}")
+            print(f"  - pending_language_reminder: {pending_language}")
+            
+            # NOTE: Timeout timer will be started in response.audio.done when AI actually finishes speaking
+            # This prevents premature "Are you there?" during AI responses
+            
             # If there's a pending language reminder, send it now
             if conversation_state.get('pending_language_reminder', False):
                 print("[LOG] Sending pending language reminder")
@@ -696,7 +941,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     "response": {
                         "modalities": ["text", "audio"],
                         "temperature": 0.8,
-                        "instructions": "Politely remind the user that this conversation must be in English, then ask how you can help you today."
+                        "instructions": "Say exactly: 'Please speak in English so I can assist you better.' Then STOP and wait for their response."
                     }
                 }
                 await openai_ws.send(json.dumps(language_reminder))
@@ -722,63 +967,71 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             transcript = response.get('transcript', '')
             print(f"[User] {transcript}")
             print(f"[LOG] User Input: {transcript}")
-            # Log to database
+
+            # Cancel timeout timer when user speaks
+            cancel_timeout_timer()
+
+            # Reset "Are you there?" counter when user responds
+            if conversation_state['are_you_there_count'] > 0:
+                print(f"[TIMEOUT] User responded, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
+                conversation_state['are_you_there_count'] = 0
+
+            # CRITICAL: Check for disposition phrases FIRST before AI can respond
+            disposition, disposition_message = check_disposition(transcript, conversation_state['lead_timezone'])
+            if disposition_message:  # If this is a disposition phrase, handle it immediately
+                print(f"[LOG] DISPOSITION DETECTED IMMEDIATELY: {disposition}: {disposition_message}")
+                conversation_state['disposition'] = disposition
+                conversation_state['disposition_message'] = disposition_message
+
+                # Cancel any active response immediately to prevent AI from speaking
+                if conversation_state['active_response']:
+                    print("[LOG] Cancelling active response for immediate disposition handling")
+                    cancel_response = {
+                        "type": "response.cancel"
+                    }
+                    await openai_ws.send(json.dumps(cancel_response))
+                    conversation_state['active_response'] = False
+                    await asyncio.sleep(0.1)  # Ensure cancellation takes effect
+
+                # Log user input to database
+                await log_conversation(
+                    conversation_state['lead_id'],
+                    conversation_state['conversation_id'],
+                    'user',
+                    transcript
+                )
+
+                # Create disposition response immediately
+                response_create = {
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["text", "audio"],
+                        "instructions": f"Say exactly: '{disposition_message}' and then end the conversation."
+                    }
+                }
+                await openai_ws.send(json.dumps(response_create))
+                conversation_state['active_response'] = True
+                conversation_state['is_disposition_response'] = True
+                conversation_state['disposition_response_id'] = None
+                conversation_state['disposition_audio_sent'] = False
+                print(f"[DEBUG] Immediate disposition response created")
+                return  # Exit early to prevent normal AI response processing
+
+            # If this is the first user response after initial greeting, activate timeout system
+            if conversation_state.get('is_initial_greeting', False):
+                print("[TIMEOUT] User responded to initial greeting - timeout system now active")
+                conversation_state['is_initial_greeting'] = False
+
+            # Log to database (for non-disposition messages)
             await log_conversation(
                 conversation_state['lead_id'],
                 conversation_state['conversation_id'],
                 'user',
                 transcript
             )
-            
-            # Check for disposition phrases
-            disposition, disposition_message = check_disposition(transcript, conversation_state['lead_timezone'])
-            if disposition_message:  # Only process if disposition message is not None
-                print(f"[LOG] Detected disposition {disposition}: {disposition_message}")
-                conversation_state['disposition'] = disposition
-                conversation_state['disposition_message'] = disposition_message
-                
-                # Cancel any active response
-                if conversation_state['active_response']:
-                    print("[LOG] Cancelling active response for disposition message")
-                    cancel_response = {
-                        "type": "response.cancel"
-                    }
-                    await openai_ws.send(json.dumps(cancel_response))
-                    conversation_state['active_response'] = False
-                
-                # Create a conversation item with the disposition message
-                item = {
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "message",
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": disposition_message
-                            }
-                        ]
-                    }
-                }
-                await openai_ws.send(json.dumps(item))
-                
-                # Then create a response that will speak this message
-                response_create = {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"],
-                        "instructions": f"Speak this exact message: '{disposition_message}' and then end the conversation."
-                    }
-                }
-                await openai_ws.send(json.dumps(response_create))
-                conversation_state['active_response'] = True
-                conversation_state['is_disposition_response'] = True
-                conversation_state['disposition_response_id'] = None  # Will be set when response.created is received
-                conversation_state['disposition_audio_sent'] = False  # Track if disposition audio has been sent
-                print(f"[DEBUG] Set is_disposition_response to True")
-            
+
             # Check if user is speaking in a language other than English
-            elif any(ord(char) > 127 for char in transcript):  # Check for non-ASCII characters
+            if any(ord(char) > 127 for char in transcript):  # Check for non-ASCII characters
                 print("[LOG] Non-English detected")
                 
                 # If there's an active response, cancel it and set a flag to send reminder later
@@ -797,7 +1050,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                         "response": {
                             "modalities": ["text", "audio"],
                             "temperature": 0.8,
-                            "instructions": "Politely remind the user that this conversation must be in English, then ask how you can help you today."
+                            "instructions": "Say exactly: 'Please speak in English so I can assist you better.' Then STOP and wait for their response."
                         }
                     }
                     await openai_ws.send(json.dumps(language_reminder))
@@ -805,6 +1058,16 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             
         # Handle speech started (user interruption)
         elif event_type == 'input_audio_buffer.speech_started':
+            print("[TIMEOUT] User started speaking, cancelling timeout")
+            # Cancel timeout timer when user starts speaking
+            cancel_timeout_timer()
+            conversation_state['user_speaking'] = True
+            
+            # Reset "Are you there?" counter when user starts speaking
+            if conversation_state['are_you_there_count'] > 0:
+                print(f"[TIMEOUT] User started speaking, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
+                conversation_state['are_you_there_count'] = 0
+            
             if conversation_state['in_ai_response']:
                 print()  # Finish current AI response line
                 conversation_state['in_ai_response'] = False
@@ -834,6 +1097,11 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 conversation_state['active_response'] = False
             else:
                 print("[LOG] No active response to cancel")
+        
+        # Handle speech stopped (user finished speaking)
+        elif event_type == 'input_audio_buffer.speech_stopped':
+            print("[TIMEOUT] User stopped speaking")
+            conversation_state['user_speaking'] = False
             
         # Handle response cancelled
         elif event_type == 'response.cancelled':
@@ -849,7 +1117,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     "response": {
                         "modalities": ["text", "audio"],
                         "temperature": 0.8,
-                        "instructions": "Politely remind the user that this conversation must be in English, then ask how you can help you today."
+                        "instructions": "Say exactly: 'Please speak in English so I can assist you better.' Then STOP and wait for their response."
                     }
                 }
                 await openai_ws.send(json.dumps(language_reminder))
@@ -872,6 +1140,13 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 if conversation_state.get('pending_language_reminder', False):
                     print("[LOG] Language reminder already pending")
         elif event_type == 'response.audio.delta':
+            # Track that AI is actively speaking
+            if not conversation_state.get('ai_currently_speaking', False):
+                import time
+                current_time = time.strftime("%H:%M:%S", time.localtime())
+                print(f"[AUDIO] AI started speaking at {current_time}")
+                conversation_state['ai_currently_speaking'] = True
+
             # If this is a disposition response, handle it specially
             if conversation_state.get('is_disposition_response', False):
                 # Send audio deltas for disposition responses to Plivo
@@ -886,7 +1161,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 await plivo_ws.send(json.dumps(audio_delta))
                 conversation_state['disposition_audio_sent'] = True
                 return
-                
+
             audio_delta = {
                "event": "playAudio",
                 "media": {
@@ -897,6 +1172,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             }
             await plivo_ws.send(json.dumps(audio_delta))
         elif event_type == 'response.audio.done':
+            import time
+            current_time = time.strftime("%H:%M:%S", time.localtime())
+            print(f"[AUDIO] AI stopped speaking at {current_time}")
+            conversation_state['ai_currently_speaking'] = False
+
+            print("[TIMEOUT] AI finished speaking audio chunk")
+            print(f"[DEBUG] response.audio.done - active_response: {conversation_state.get('active_response', 'unknown')}")
+            print(f"[DEBUG] response.audio.done - is_disposition_response: {conversation_state.get('is_disposition_response', False)}")
+            print(f"[DEBUG] response.audio.done - is_are_you_there_response: {conversation_state.get('is_are_you_there_response', False)}")
+            print(f"[DEBUG] response.audio.done - is_initial_greeting: {conversation_state.get('is_initial_greeting', False)}")
+            
             # If this is a disposition response, handle it specially
             if conversation_state.get('is_disposition_response', False) and conversation_state.get('disposition_audio_sent', False):
                 print(f"[LOG] Disposition audio completed, hanging up call")
@@ -916,6 +1202,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     conversation_state.get('disposition_message', '')
                 )
                 return
+            
+            # Mark that audio is complete and check if we can start timer
+            print("[TIMEOUT] AI audio done - marking audio complete")
+            conversation_state['response_audio_complete'] = True
+            check_and_start_timeout_timer()
+                
         elif event_type == 'response.function_call_arguments.done':
             print(f'Received function call response: {response}')
             if response['name'] == 'calc_sum':
