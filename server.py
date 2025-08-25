@@ -26,7 +26,7 @@ if not OPENAI_API_KEY:
 PORT = 5000
 SYSTEM_MESSAGE = (
     "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue talking or ask follow-up questions unless the user responds first. "
-    "CRITICAL: When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Do NOT attach any other sentence, reason, or context to that utterance. Then STOP and wait for the user to respond. "
+    "CRITICAL: As a ai-agent whenever you think to ask a user how are you doing today? then do not atteched with anything else and wait for the user to respond. "
     "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
     "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English. "
     "IMPORTANT: If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
@@ -168,15 +168,15 @@ def check_disposition(transcript, lead_timezone):
     
     # Pattern 1: Do not call
     if re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
-        return 2, ""
+        return 2, "2"
     
     # Pattern 2: Wrong number
     elif re.search(r"\b(wrong number|invalid number|incorrect number)\b", transcript_lower):
-        return 7, ""
+        return 7, "7"
     
     # Pattern 3: Not interested
     elif re.search(r"\b(not looking to move|not looking|not interested)\b", transcript_lower):
-        return 3, ""
+        return 3, "3"
     
     # Pattern 4: Not available
     elif re.search(r"\b(not available|hang up or press|reached the maximum time allowed to make your recording|at the tone|record your message|voicemail|voice mail|leave your message|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
@@ -188,22 +188,22 @@ def check_disposition(transcript, lead_timezone):
             print(f'🎤 Followup DateTime: {followup_datetime}')
             
             if followup_datetime:
-                return 4, ""
+                return 4, "4"
         
         # Default response for voicemail or no datetime found
-        return 6, ""
+        return 6, "6"
     
     # Pattern 5: Truck rental
     elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
-        return 13, ""
+        return 13, "13"
     
     # Pattern 6: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
-        return 8, ""
+        return 8, "8"
     
     # Pattern 7: Goodbye
     elif re.search(r"\b(bye|goodbye|good bye|take care|see you)\b", transcript_lower):
-        return 6, ""
+        return 6, "6"
     
     # Default disposition
     return 6, None
@@ -476,7 +476,7 @@ async def handle_message():
         try:
             conversation_state['are_you_there_count'] += 1
             # Use the last_timeout_duration recorded when timer started for accurate logs
-            timeout_duration = conversation_state.get('last_timeout_duration', 5 if conversation_state['are_you_there_count'] == 1 else 10)
+            timeout_duration = conversation_state.get('last_timeout_duration', 5 if conversation_state['are_you_there_count'] == 1 else 15)
             import time
             current_time = time.strftime("%H:%M:%S", time.localtime())
             print(f"[TIMEOUT] {timeout_duration} seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
@@ -528,7 +528,7 @@ async def handle_message():
     
     # Function to start timeout timer
     def start_timeout_timer():
-        """Start timeout timer - initial wait 5s (or 10s if question), then 10s between 'Are you there?' prompts"""
+        """Start timeout timer - initial wait 5s (or 8s if question), then 15s between 'Are you there?' prompts"""
         # Cancel existing timer if any
         if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
             print("[TIMEOUT] Cancelling existing timeout task")
@@ -543,15 +543,15 @@ async def handle_message():
             if conversation_state['are_you_there_count'] == 0:
                 # First timeout after an AI response
                 if conversation_state.get('last_agent_ended_with_question', False):
-                    timeout_duration = 10
-                    timeout_msg = "10-second (question)"
+                    timeout_duration = 8
+                    timeout_msg = "8-second (question)"
                 else:
                     timeout_duration = 5
                     timeout_msg = "5-second"
             else:
-                # After 'Are you there?' we wait 10s
-                timeout_duration = 10
-                timeout_msg = "10-second"
+                # After 'Are you there?' we wait 15s
+                timeout_duration = 15
+                timeout_msg = "15-second"
 
             # Persist for logging in handle_timeout
             conversation_state['last_timeout_duration'] = timeout_duration
