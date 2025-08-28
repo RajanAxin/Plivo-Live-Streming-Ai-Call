@@ -25,6 +25,7 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 SYSTEM_MESSAGE = (
+    "Always ask one clear question at a time and wait for the user’s response before continuing. Do not provide long monologues unless explicitly asked."
     "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue talking or ask follow-up questions unless the user responds first. "
     "CRITICAL: When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Do NOT attach any other sentence, reason, or context to that utterance. Then STOP and wait for the user to respond. "
     "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
@@ -112,7 +113,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     auth_header = base64.b64encode(auth_string.encode()).decode()
     print(f"[DEBUG] Attempting to hang up call {call_uuid}")
     print(f"[DEBUG] URL: {url}")
-    print(f"[DEBUG] Auth header: {auth_header[:10]}...")
+    print(f"[DEBUG] Auth header: {auth_header[:5]}...")
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -462,12 +463,12 @@ async def handle_message():
 
     # Timeout handler functions
     async def handle_timeout():
-        """Handle 10-second timeout by sending 'Are you there?' message"""
+        """Handle 5-second timeout by sending 'Are you there?' message"""
         try:
             conversation_state['are_you_there_count'] += 1
             import time
             current_time = time.strftime("%H:%M:%S", time.localtime())
-            print(f"[TIMEOUT] 10 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
+            print(f"[TIMEOUT] 5 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
 
             # Reset timeout state
             conversation_state['timeout_task'] = None
@@ -511,7 +512,7 @@ async def handle_message():
             print(f"[TIMEOUT] Error handling timeout: {e}")
 
     def start_timeout_timer():
-        """Start a 10-second timer for user response"""
+        """Start a 5-second timer for user response"""
         # Cancel existing timer if any
         if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
             print("[TIMEOUT] Cancelling existing timeout task")
@@ -522,17 +523,17 @@ async def handle_message():
             not conversation_state.get('pending_hangup', False) and
             not conversation_state.get('waiting_for_user', False)):
 
-            print("[TIMEOUT] ⏰ Starting 10-second timeout timer")
+            print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
             conversation_state['waiting_for_user'] = True
-            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(10))
+            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
 
             # Schedule the timeout handler
             async def timeout_wrapper():
                 try:
-                    print("[TIMEOUT] ⏱️ Starting 10-second countdown...")
+                    print("[TIMEOUT] ⏱️ Starting 5-second countdown...")
                     await conversation_state['timeout_task']
                     if conversation_state.get('waiting_for_user', False):
-                        print("[TIMEOUT] ⏰ 10 seconds elapsed! Calling handle_timeout()")
+                        print("[TIMEOUT] ⏰ 5 seconds elapsed! Calling handle_timeout()")
                         await handle_timeout()
                     else:
                         print("[TIMEOUT] ⏰ Timer completed but waiting_for_user=False, not calling handle_timeout")
@@ -1131,7 +1132,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 conversation_state['total_audio_bytes'] = 0
                 conversation_state['audio_start_time'] = None
 
-                # Start 10-second timeout timer for user response
+                # Start 5-second timeout timer for user response
                 if not conversation_state.get('is_disposition_response', False):
                     # Check if this was an "Are you there?" response
                     if conversation_state.get('is_are_you_there_response', False):
@@ -1142,23 +1143,23 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     if (not conversation_state.get('pending_hangup', False) and
                         not conversation_state.get('waiting_for_user', False)):
 
-                        print("[TIMEOUT] ⏰ Starting 10-second timeout timer")
+                        print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
                         conversation_state['waiting_for_user'] = True
-                        conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(10))
+                        conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
 
                         # Schedule the timeout handler
                         async def timeout_wrapper():
                             try:
-                                print("[TIMEOUT] ⏱️ Starting 10-second countdown...")
+                                print("[TIMEOUT] ⏱️ Starting 5-second countdown...")
                                 await conversation_state['timeout_task']
                                 if conversation_state.get('waiting_for_user', False):
-                                    print("[TIMEOUT] ⏰ 10 seconds elapsed! Handling timeout...")
+                                    print("[TIMEOUT] ⏰ 5 seconds elapsed! Handling timeout...")
 
                                     # Handle timeout inline
                                     conversation_state['are_you_there_count'] += 1
                                     import time
                                     current_time = time.strftime("%H:%M:%S", time.localtime())
-                                    print(f"[TIMEOUT] 10 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
+                                    print(f"[TIMEOUT] 5 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
 
                                     # Reset timeout state
                                     conversation_state['timeout_task'] = None
@@ -1252,7 +1253,14 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
     session_update = {
         "type": "session.update",
         "session": {
-            "turn_detection": {"type": "server_vad"},
+            "turn_detection": {
+                "type": "server_vad",
+                    "config": {
+                        "silence_duration_ms": 500,  # Wait 500ms of silence before considering turn complete
+                        "padding_duration_ms": 300,   # Add padding to detected speech
+                        "vad_aggressiveness": 2       # 1-3, higher = more aggressive speech detection
+                    }
+            },
             "tools": [
                 {
                     "type": "function",
@@ -1274,7 +1282,8 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
             "instructions": prompt_text,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
-            "input_audio_transcription": {"model": "whisper-1"}  # Enable transcription
+            "max_response_tokens": 100,
+            "input_audio_transcription": {"model": "whisper-1", "language": "en", "prompt": "English conversation only. Transcribe as English."}  # Enable transcription
         }
     }
     await openai_ws.send(json.dumps(session_update))
