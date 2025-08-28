@@ -25,7 +25,7 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 SYSTEM_MESSAGE = (
-    "Always ask one clear question at a time and wait for the user’s response before continuing. Do not provide long monologues unless explicitly asked."
+    "Always speak briefly (1–2 sentences). Ask one question, then wait for the user’s response."
     "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue talking or ask follow-up questions unless the user responds first. "
     "CRITICAL: When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Do NOT attach any other sentence, reason, or context to that utterance. Then STOP and wait for the user to respond. "
     "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
@@ -1253,14 +1253,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
     session_update = {
         "type": "session.update",
         "session": {
-            "turn_detection": {
-                "type": "server_vad",
-                    "config": {
-                        "silence_duration_ms": 500,  # Wait 500ms of silence before considering turn complete
-                        "padding_duration_ms": 300,   # Add padding to detected speech
-                        "vad_aggressiveness": 2       # 1-3, higher = more aggressive speech detection
-                    }
-            },
+            "turn_detection": {"type": "server_vad"},
             "tools": [
                 {
                     "type": "function",
@@ -1281,9 +1274,8 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
             "voice": voice_name,
             "instructions": prompt_text,
             "modalities": ["text", "audio"],
-            "temperature": 0.3,
-            "max_response_tokens": 100,
-            "input_audio_transcription": {"model": "whisper-1", "language": "en", "prompt": "English conversation only. Transcribe as English."}  # Enable transcription
+            "temperature": 0.8,
+           "input_audio_transcription": {"model": "whisper-1", "language": "en", "prompt": "English conversation only. Transcribe as English."}  # Enable transcription
         }
     }
     await openai_ws.send(json.dumps(session_update))
