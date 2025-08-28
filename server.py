@@ -1281,7 +1281,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
             "voice": voice_name,
             "instructions": prompt_text,
             "modalities": ["text", "audio"],
-            "temperature": 0.8,
+            "temperature": 0.3,
             "max_response_tokens": 100,
             "input_audio_transcription": {"model": "whisper-1", "language": "en", "prompt": "English conversation only. Transcribe as English."}  # Enable transcription
         }
