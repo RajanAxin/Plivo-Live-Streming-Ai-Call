@@ -25,18 +25,25 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 SYSTEM_MESSAGE = (
-    "Always speak briefly (1–2 sentences). Ask one question, then wait for the user’s response."
-    "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue talking or ask follow-up questions unless the user responds first. "
-    "CRITICAL: When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Do NOT attach any other sentence, reason, or context to that utterance. Then STOP and wait for the user to respond. "
-    "Do not repeat the same response back-to-back (e.g., avoid sending 'Sorry to bother you, I will call you later' twice in a row)."
-    "IMPORTANT: The conversation must be in English. If the user speaks in a language other than English, politely ask them to speak in English. "
-    "IMPORTANT: If the user says invalid number, wrong number, already booked, booked then or incorrect number then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    "IMPORTANT: If the user says don't call, do not call, not to call, not looking to move, not looking, not interested or take me off then politely respond with: 'No worries, sorry to bother you. Have a great day'. "
-    "IMPORTANT: If the user asks for truck rental, van rental, or truck rent then politely respond with: 'We are providing moving services, sorry to bother you. Have a great day'. "
-    "IMPORTANT: If the user says bye, goodbye, good bye, take care, or see you then politely respond with: 'Nice to talk with you. Have a great day'."
-    "IMPORTANT: If the user says are busy, am busy, busy, call me later, call me, call me at, not available, voicemail, or asks to call later then politely respond with: 'I will call you later. Nice to talk with you. Have a great day.'."
-    "Be helpful and professional in your responses. Wait for the user to speak before responding."
+    "Always speak briefly (1–2 sentences). Ask one question, then wait for the user’s response. "
+    "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue unless the user replies. "
+    "When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Then STOP. "
+    "Do not repeat the same response back-to-back. "
+    "If the user says sorry then please repeat your last question. "
+
+    "If the user says 'okay' or 'ok' then please ask next question. "
+    
+    "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
+
+    "If the user says 'don’t call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
+
+    "If the user asks about 'truck rental', 'van rental', or 'truck rent', respond with: 'We provide moving services, sorry to bother you. Have a great day.' "
+
+    "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
+
+    "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
 )
+
 
 app = Quart(__name__)
 
@@ -1275,7 +1282,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
             "instructions": prompt_text,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
-           "input_audio_transcription": {"model": "whisper-1", "language": "en", "prompt": "English conversation only. Transcribe as English."}  # Enable transcription
+           "input_audio_transcription": {"model": "whisper-1", "language": "en"} 
         }
     }
     await openai_ws.send(json.dumps(session_update))
