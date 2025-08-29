@@ -42,6 +42,8 @@ SYSTEM_MESSAGE = (
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
 
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
+
+    "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 )
 
 
