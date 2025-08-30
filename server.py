@@ -32,6 +32,8 @@ SYSTEM_MESSAGE = (
     "If the user says sorry then please repeat your last question. "
 
     "If the user says 'okay' or 'ok' then please ask next question. "
+
+    "If the user says 'No i'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?' "
     
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
 
@@ -844,6 +846,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         # Handle user transcriptions
         elif event_type == 'conversation.item.input_audio_transcription.completed':
             transcript = response.get('transcript', '')
+
+             # Ignore empty or watermark/noise transcriptions
+            if not transcript.strip() or transcript.strip().lower().startswith("subs by www.zeoranger.co.uk"):
+                print(f"[LOG] Ignored empty or noise user input: '{transcript}'")
+                return
+            
             print(f"[User] {transcript}")
             print(f"[LOG] User Input: {transcript}")
 
@@ -884,20 +892,20 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     conversation_state['active_response'] = False
                 
                 # Create a conversation item with the disposition message
-                item = {
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "message",
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": disposition_message
-                            }
-                        ]
-                    }
-                }
-                await openai_ws.send(json.dumps(item))
+                # item = {
+                #     "type": "conversation.item.create",
+                #     "item": {
+                #         "type": "message",
+                #         "role": "assistant",
+                #         "content": [
+                #             {
+                #                 "type": "input_text",
+                #                 "text": disposition_message
+                #             }
+                #         ]
+                #     }
+                # }
+                # await openai_ws.send(json.dumps(item))
                 
                 # Then create a response that will speak this message
                 response_create = {
@@ -1264,19 +1272,19 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
         "session": {
             "turn_detection": {"type": "server_vad"},
             "tools": [
-                {
-                    "type": "function",
-                    "name": "calc_sum",
-                    "description": "Get the sum of two numbers",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "num1": { "type": "string", "description": "the first number" },
-                            'num2': { "type": "string", "description": "the seconds number" }
-                        },
-                        "required": ["num1", "num2"]
-                    }
-                }
+                # {
+                #     "type": "function",
+                #     "name": "calc_sum",
+                #     "description": "Get the sum of two numbers",
+                #     "parameters": {
+                #         "type": "object",
+                #         "properties": {
+                #             "num1": { "type": "string", "description": "the first number" },
+                #             'num2': { "type": "string", "description": "the seconds number" }
+                #         },
+                #         "required": ["num1", "num2"]
+                #     }
+                # }
             ],
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
