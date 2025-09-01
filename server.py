@@ -189,45 +189,42 @@ def check_disposition(transcript, lead_timezone):
     
     # Pattern 1: Do not call
     if re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
-        return 2, "No worries, sorry to bother you. Have a great day"
+        return 2, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 2: Wrong number
     elif re.search(r"\b(wrong number|invalid number|incorrect number)\b", transcript_lower):
-        return 7, "No worries, sorry to bother you. Have a great day"
+        return 7, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 3: Not interested
     elif re.search(r"\b(not looking to move|not looking|not interested)\b", transcript_lower):
-        return 3, "No worries, sorry to bother you. Have a great day"
+        return 3, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 4: Not available
     elif re.search(r"\b(not available|hang up or press|reached the maximum time allowed to make your recording|at the tone|record your message|voicemail|voice mail|leave your message|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
-        
         # Check if it's a busy/call me later pattern that might have a datetime
         if re.search(r"\b(are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
             followup_datetime = get_followup_datetime(transcript_lower, lead_timezone)
             print(f'🎤 Lead Timezone: {lead_timezone}')
             print(f'🎤 Followup DateTime: {followup_datetime}')
-            
             if followup_datetime:
-                return 4, "I will call you later. Nice to talk with you. Have a great day."
-        
+                return 4, "I will call you later. Nice to talk with you. Have a great day.", followup_datetime
         # Default response for voicemail or no datetime found
-        return 6, "I will call you later. Nice to talk with you. Have a great day."
+        return 6, "I will call you later. Nice to talk with you. Have a great day.", None
     
     # Pattern 5: Truck rental
     elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
-        return 13, "We are providing moving services, sorry to bother you. Have a great day"
+        return 13, "We are providing moving services, sorry to bother you. Have a great day", None
     
     # Pattern 6: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
-        return 8, "No worries, sorry to bother you. Have a great day"
+        return 8, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 7: Goodbye
     elif re.search(r"\b(bye|goodbye|good bye|take care|see you)\b", transcript_lower):
-        return 6, "Nice to talk with you. Have a great day"
+        return 6, "Nice to talk with you. Have a great day", None
     
     # Default disposition
-    return 6, None
+    return 6, None, None
 
 def get_followup_datetime(user_speech, timezone_id: int):
     # Fetch timezone from DB
@@ -860,6 +857,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
              # Ignore empty or watermark/noise transcriptions
             if not transcript.strip() or transcript.strip().lower().startswith("subs by www.zeoranger.co.uk"):
                 print(f"[LOG] Ignored empty or noise user input: '{transcript}'")
+                return
+            
+            # Ignore common false positives and very short generic responses
+            false_positives = {"yeah", "okay", "ok", "hmm", "um", "uh", "hello", "hi", "test", "testing"}
+            if transcript.strip().lower() in false_positives:
+                print(f"[LOG] Ignored likely false positive user input: '{transcript}'")
+                return
+            
+            # Optionally, ignore single-word responses under 4 characters (often noise)
+            if len(transcript.strip().split()) == 1 and len(transcript.strip()) <= 3:
+                print(f"[LOG] Ignored very short user input: '{transcript}'")
                 return
             
             print(f"[User] {transcript}")
