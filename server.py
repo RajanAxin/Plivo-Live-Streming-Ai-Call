@@ -32,6 +32,9 @@ SYSTEM_MESSAGE = (
     "INTRODUCTION RULE: At the start of the call, ONLY say: 'Hi, this is <agent_name>. Am I speaking to <lead_name>?' "
     "This introduction MUST be the ONLY thing spoken. Do not add any other words. Do not continue with any sales pitch. Do not say 'Great' or anything else. "
     "If the user answers, then continue the conversation based on their response. "
+    "WAIT FOR USER CONFIRMATION: After asking 'Am I speaking to [name]?', you MUST wait for the user to confirm before proceeding. Do NOT continue with questions about moving services until the user confirms their identity. "
+    "If the user confirms their identity (e.g., 'Yes', 'That's me', 'Speaking'), then ask: 'Great! How are you today?' and wait for response. "
+    "Only after they respond to 'How are you?' should you proceed with moving service questions. "
     "When asking how the user is doing, ONLY say exactly one of: 'How are you?' or 'Hi <lead_name>. How are you?'. Then STOP. "
     "Do not repeat the same response back-to-back. "
     "If the user says sorry then please repeat your last question. "
@@ -861,7 +864,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 return
             
             # Ignore common false positives and very short generic responses
-            false_positives = {"yeah", "okay", "ok", "hmm", "um", "uh", "hello", "hi", "test", "testing"}
+            false_positives = {"yeah", "okay", "ok", "hmm", "um", "uh", "hello", "hi", "test", "testing", "thank you", "Thank you", "thanks"}
             if transcript.strip().lower() in false_positives:
                 print(f"[LOG] Ignored likely false positive user input: '{transcript}'")
                 return
