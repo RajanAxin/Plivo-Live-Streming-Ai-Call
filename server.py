@@ -491,17 +491,6 @@ async def handle_message():
             conversation_state['timeout_task'] = None
             conversation_state['waiting_for_user'] = False
 
-            # Cancel any active response before sending "Are you there?"
-            if conversation_state.get('active_response', False):
-                print("[TIMEOUT] Cancelling active response before sending 'Are you there?'")
-                cancel_response = {
-                    "type": "response.cancel"
-                }
-                await openai_ws.send(json.dumps(cancel_response))
-                conversation_state['active_response'] = False
-                # Give OpenAI a moment to process the cancellation
-                await asyncio.sleep(0.2)
-
             # Check if we've reached the maximum attempts
             if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
                 print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
@@ -510,12 +499,13 @@ async def handle_message():
                 conversation_state['disposition'] = 6  # Default disposition for no response
                 conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
 
+                # Create final goodbye message before hanging up
                 goodbye_response = {
                     "type": "response.create",
                     "response": {
                         "modalities": ["text", "audio"],
-                        "temperature": 0.8,
-                        "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
+                        "temperature": 0.0,
+                        "instructions": "CRITICAL: SAY EXACTLY THIS AND NOTHING ELSE: 'Thank you for your time. Have a great day.' DO NOT ADD ANYTHING. DO NOT CONTINUE THE CONVERSATION. JUST SAY THOSE EXACT WORDS AND STOP."
                     }
                 }
                 await openai_ws.send(json.dumps(goodbye_response))
@@ -528,12 +518,13 @@ async def handle_message():
                 "type": "response.create",
                 "response": {
                     "modalities": ["text", "audio"],
-                    "temperature": 0.8,
-                    "instructions": "Say exactly: 'Are you there?' in a friendly tone and wait for their response."
+                    "temperature": 0.0,
+                    "instructions": "CRITICAL: SAY EXACTLY THIS AND NOTHING ELSE: 'Are you there?' DO NOT ADD ANYTHING. DO NOT CONTINUE THE CONVERSATION. DO NOT ANSWER ANY PREVIOUS QUESTIONS. JUST SAY 'Are you there?' AND WAIT FOR RESPONSE."
                 }
             }
             await openai_ws.send(json.dumps(timeout_response))
             conversation_state['active_response'] = True
+            conversation_state['is_disposition_response'] = True
 
         except Exception as e:
             print(f"[TIMEOUT] Error handling timeout: {e}")
@@ -1049,6 +1040,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 }
                 await openai_ws.send(json.dumps(language_reminder))
                 conversation_state['active_response'] = True
+                conversation_state['pending_language_reminder'] = False
             
         # Handle other events
         elif event_type == 'session.updated':
