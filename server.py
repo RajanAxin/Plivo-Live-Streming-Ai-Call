@@ -25,8 +25,7 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 SYSTEM_MESSAGE = (
-    "CRITICAL: Always follow instructions EXACTLY. When told to say specific words, say ONLY those words and nothing else. "
-    "Never add extra words, questions, or conversation unless explicitly instructed. "
+    "CRITICAL RULE: if user not respond then ONLY say exactly Are you there? . "
     "Always speak briefly (1–2 sentences). Ask one question, then wait for the user’s response. "
     "CRITICAL RULE: After ANY question, STOP speaking and WAIT for the user to respond. "
     "NEVER continue talking, NEVER add more context, and NEVER ask a follow-up until the user replies. "
@@ -481,7 +480,7 @@ async def handle_message():
     print(f"prompt_text: {prompt_to_use}")
 
     # Timeout handler functions
-    async def handle_timeout(openai_ws, conversation_state):
+    async def handle_timeout():
         """Handle 5-second timeout by sending 'Are you there?' message"""
         try:
             conversation_state['are_you_there_count'] += 1
@@ -507,7 +506,7 @@ async def handle_message():
                     "response": {
                         "modalities": ["text", "audio"],
                         "temperature": 0.8,
-                         "instructions": "SAY EXACTLY THIS AND NOTHING ELSE: 'Thank you for your time. Have a great day.' DO NOT add any other words. DO NOT ask any questions. DO NOT continue the conversation."
+                        "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
                     }
                 }
                 await openai_ws.send(json.dumps(goodbye_response))
@@ -521,26 +520,17 @@ async def handle_message():
                 "response": {
                     "modalities": ["text", "audio"],
                     "temperature": 0.8,
-                     "instructions": "SAY EXACTLY THIS AND NOTHING ELSE: 'Are you there?' DO NOT add any other words. DO NOT ask how they are. DO NOT continue with any other conversation. Just say 'Are you there?' and then wait silently for their response."
+                    "instructions": "Say exactly: 'Are you there?' in a friendly tone and wait for their response."
                 }
             }
             await openai_ws.send(json.dumps(timeout_response))
             conversation_state['active_response'] = True
-            conversation_state['is_are_you_there_response'] = True
 
         except Exception as e:
             print(f"[TIMEOUT] Error handling timeout: {e}")
 
     def start_timeout_timer():
         """Start a 5-second timer for user response"""
-
-        # Don't start if already waiting or in disposition flow
-        if (conversation_state.get('waiting_for_user', False) or
-            conversation_state.get('is_disposition_response', False) or
-            conversation_state.get('pending_hangup', False)):
-            print("[TIMEOUT] Not starting timer - already waiting or in disposition flow")
-            return
-    
         # Cancel existing timer if any
         if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
             print("[TIMEOUT] Cancelling existing timeout task")
@@ -562,7 +552,7 @@ async def handle_message():
                     await conversation_state['timeout_task']
                     if conversation_state.get('waiting_for_user', False):
                         print("[TIMEOUT] ⏰ 5 seconds elapsed! Calling handle_timeout()")
-                        await handle_timeout(openai_ws, conversation_state)
+                        await handle_timeout()
                     else:
                         print("[TIMEOUT] ⏰ Timer completed but waiting_for_user=False, not calling handle_timeout")
                 except asyncio.CancelledError:
@@ -685,15 +675,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 conversation_state['current_ai_text'] += delta
                 if item_id:
                     conversation_state['response_items'][item_id] += delta
-        elif event_type == 'response.text.delta':
-            # Check if this is supposed to be an "Are you there?" response
-            if conversation_state.get('is_are_you_there_response', False):
-                delta = response.get('delta', '')
-                # Validate that the response matches what we expect
-                if "are you there" not in delta.lower():
-                    print(f"[WARNING] AI is not following 'Are you there?' instructions: {delta}")
-                    # You might want to cancel and retry here
-                    #         
+                
         elif event_type == 'response.text.done':
             # If this is a disposition response, handle it specially
             if conversation_state.get('is_disposition_response', False):
@@ -888,7 +870,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             if len(transcript.strip().split()) == 1 and len(transcript.strip()) <= 3:
                 print(f"[LOG] Ignored very short user input: '{transcript}'")
                 return
-                
             print(f"[User] {transcript}")
             print(f"[LOG] User Input: {transcript}")
 
