@@ -26,16 +26,18 @@ if not OPENAI_API_KEY:
 PORT = 5000
 SYSTEM_MESSAGE = (
     "Always speak briefly (1–2 sentences). Ask one question, then wait for the user’s response. "
-    "CRITICAL: After each response, STOP speaking and WAIT for the user to respond. Do NOT continue unless the user replies. "
-     "INTRODUCTION RULE: When introducing yourself, ONLY say: 'Hi, this is <agent_name>. Am I speaking to <lead_name>?' "
-    "After this introduction, you MUST STOP completely. Do not say anything else until the user responds. "
-    "When asking how the user is doing, ONLY say exactly one of: 'How are you?' or, if you know their first name, 'Hi <name>. How are you?'. Then STOP. "
+    "CRITICAL RULE: After ANY question, STOP speaking and WAIT for the user to respond. "
+    "NEVER continue talking, NEVER add more context, and NEVER ask a follow-up until the user replies. "
+    "INTRODUCTION RULE: At the start of the call, ONLY say: 'Hi, this is <agent_name>. Am I speaking to <lead_name>?' "
+    "This introduction MUST be the ONLY thing spoken. Do not add any other words. Do not continue with any sales pitch. Do not say 'Great' or anything else. "
+    "If the user answers, then continue the conversation based on their response. "
+    "When asking how the user is doing, ONLY say exactly one of: 'How are you?' or 'Hi <lead_name>. How are you?'. Then STOP. "
     "Do not repeat the same response back-to-back. "
     "If the user says sorry then please repeat your last question. "
 
     "If the user says 'okay' or 'ok' then please ask next question. "
 
-    "If the user says 'No i'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?' "
+    "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?' "
     
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
 
@@ -49,6 +51,7 @@ SYSTEM_MESSAGE = (
 
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 )
+
 
 
 app = Quart(__name__)
@@ -206,10 +209,10 @@ def check_disposition(transcript, lead_timezone):
             print(f'🎤 Followup DateTime: {followup_datetime}')
             
             if followup_datetime:
-                return 4, "I will call you later. Nice to talk with you. Have a great day.", followup_datetime
+                return 4, "I will call you later. Nice to talk with you. Have a great day."
         
         # Default response for voicemail or no datetime found
-        return 6, "I will call you later. Nice to talk with you. Have a great day.", followup_datetime
+        return 6, "I will call you later. Nice to talk with you. Have a great day."
     
     # Pattern 5: Truck rental
     elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
