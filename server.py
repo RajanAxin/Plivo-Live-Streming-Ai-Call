@@ -845,7 +845,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     conversation_state['conversation_id'], 
                     conversation_state['disposition'], 
                     conversation_state['lead_id'],
-                    conversation_state.get('disposition_message', '')
+                    conversation_state.get('disposition_message', ''),
                     followup_datetime=conversation_state.get('followup_datetime')
                 )
                 conversation_state['pending_hangup'] = False
@@ -1252,7 +1252,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     conversation_state['conversation_id'],
                     conversation_state['disposition'],
                     conversation_state['lead_id'],
-                    conversation_state.get('disposition_message', '')
+                    conversation_state.get('disposition_message', ''),
                     followup_datetime=conversation_state.get('followup_datetime')
                 )
                 return
