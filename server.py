@@ -40,15 +40,15 @@ SYSTEM_MESSAGE = (
 
     "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?' "
     
-    #"If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
+    "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
 
-    #"If the user says 'don’t call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
+    "If the user says 'don’t call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
 
-    #"If the user asks about 'truck rental', 'van rental', or 'truck rent', respond with: 'We provide moving services, sorry to bother you. Have a great day.' "
+    "If the user asks about 'truck rental', 'van rental', or 'truck rent', respond with: 'We provide moving services, sorry to bother you. Have a great day.' "
 
-    #"If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
+    "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
 
-    #"If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
+    "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
 
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 )
@@ -929,14 +929,14 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 # await openai_ws.send(json.dumps(item))
                 
                 # Then create a response that will speak this message
-                response_create = {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"],
-                        "instructions": f"Speak this exact message: '{disposition_message}' and then end the conversation."
-                    }
-                }
-                await openai_ws.send(json.dumps(response_create))
+                #response_create = {
+                #    "type": "response.create",
+                #    "response": {
+                #        "modalities": ["text", "audio"],
+                #        "instructions": f"Speak this exact message: '{disposition_message}' and then end the conversation."
+                #    }
+                #}
+                #await openai_ws.send(json.dumps(response_create))
                 conversation_state['active_response'] = True
                 conversation_state['is_disposition_response'] = True
                 conversation_state['disposition_response_id'] = None  # Will be set when response.created is received
