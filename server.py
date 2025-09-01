@@ -115,7 +115,7 @@ async def log_conversation(lead_id, conversation_id, speaker, content):
         )
 
 # Function to hang up call using Plivo API
-async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text"):
+async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text", followup_datetime=None):
     if not PLIVO_AUTH_ID or not PLIVO_AUTH_TOKEN:
         print("Plivo credentials not set. Cannot hang up call.")
         return
@@ -148,6 +148,10 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
         "lead_id": lead_id,
         "disposition": disposition
     }
+
+    if followup_datetime:
+        params['followupdatetime'] = followup_datetime
+        print(f"[DEBUG] Including followupdatetime: {followup_datetime}")
     redirect_url = f"http://54.176.128.91/disposition_route?{urlencode(params)}"
     escaped_url = html.escape(redirect_url, quote=True)
     
@@ -202,10 +206,10 @@ def check_disposition(transcript, lead_timezone):
             print(f'🎤 Followup DateTime: {followup_datetime}')
             
             if followup_datetime:
-                return 4, "I will call you later. Nice to talk with you. Have a great day."
+                return 4, "I will call you later. Nice to talk with you. Have a great day.", followup_datetime
         
         # Default response for voicemail or no datetime found
-        return 6, "I will call you later. Nice to talk with you. Have a great day."
+        return 6, "I will call you later. Nice to talk with you. Have a great day.", followup_datetime
     
     # Pattern 5: Truck rental
     elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
@@ -842,6 +846,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     conversation_state['disposition'], 
                     conversation_state['lead_id'],
                     conversation_state.get('disposition_message', '')
+                    followup_datetime=conversation_state.get('followup_datetime')
                 )
                 conversation_state['pending_hangup'] = False
             
@@ -878,11 +883,14 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             )
             
             # Check for disposition phrases
-            disposition, disposition_message = check_disposition(transcript, conversation_state['lead_timezone'])
+            disposition, disposition_message, followup_datetime = check_disposition(transcript, conversation_state['lead_timezone'])
             if disposition_message:  # Only process if disposition message is not None
                 print(f"[LOG] Detected disposition {disposition}: {disposition_message}")
                 conversation_state['disposition'] = disposition
                 conversation_state['disposition_message'] = disposition_message
+                if followup_datetime:
+                    print(f"[LOG] Detected follow-up datetime: {followup_datetime}")
+                    conversation_state['followup_datetime'] = followup_datetime
                 
                 # Cancel any active response
                 if conversation_state['active_response']:
@@ -1245,6 +1253,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     conversation_state['disposition'],
                     conversation_state['lead_id'],
                     conversation_state.get('disposition_message', '')
+                    followup_datetime=conversation_state.get('followup_datetime')
                 )
                 return
         elif event_type == 'response.function_call_arguments.done':
