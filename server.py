@@ -17,6 +17,7 @@ import datetime
 import aiohttp
 import re
 import html
+import time
 load_dotenv(dotenv_path='.env', override=True)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PLIVO_AUTH_ID = os.getenv('PLIVO_AUTH_ID')
@@ -157,18 +158,21 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     }
 
     if followup_datetime:
-        params['followupdatetime'] = followup_datetime
+        params["followupdatetime"] = followup_datetime
         print(f"[DEBUG] Including followupdatetime: {followup_datetime}")
-    redirect_url = f"http://54.176.128.91/disposition_route?{urlencode(params)}"
-    escaped_url = html.escape(redirect_url, quote=True)
-    
+
+
+    # Build the URL with proper encoding
+    query_string = urlencode(params, quote_via=quote)
+    redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
+
     # 3️⃣ Build XML Response
     content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Play>{text_message}</Play>
-    <Redirect method="POST">{escaped_url}</Redirect>
+    <Redirect method="POST">{redirect_url}</Redirect>
 </Response>'''
-    print(f"[DEBUG] Redirect URL: {escaped_url}")
+    print(f"[DEBUG] Redirect URL: {content}")
     return Response(text=content, status=200, content_type="text/xml")
 
 
@@ -393,6 +397,36 @@ async def home():
     </Response>'''
     
     return Response(xml_data, mimetype='application/xml')
+
+@app.route("/test-disposition", methods=["GET", "POST"])
+async def test_disposition():
+    # Sample parameters for testing
+    lead_id = request.args.get('lead_id', '31')
+    disposition = request.args.get('disposition', '4')
+    followup_datetime = request.args.get('followup_datetime', '09/04/2025 08:15 PM')
+    text_message = "I will call you later. Nice to talk with you. Have a great day."
+    
+    # Build query params for Redirect
+    params = {
+        "lead_id": lead_id,
+        "disposition": disposition
+    }
+    if followup_datetime:
+        params['followupdatetime'] = followup_datetime
+    
+    # Build the URL with proper encoding
+    query_string = urlencode(params, quote_via=quote)
+    redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
+    
+    # Build XML Response
+    content = f'''<?xml version="1.0" encoding="UTF-8"?>
+            <Response>
+                <Play>{text_message}</Play>
+                <Redirect method="POST">{redirect_url}</Redirect>
+            </Response>'''
+    
+    # Return XML response
+    return Response(content, status=200, mimetype="text/xml")
 
 @app.route("/test", methods=["GET", "POST"])
 async def test():
@@ -1298,14 +1332,22 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
 
                 # Hang up the call immediately after the disposition audio is done
                 print(f"[LOG] Hanging up call with disposition {conversation_state['disposition']}")
-                await asyncio.sleep(5)
-                await hangup_call(
-                    conversation_state['conversation_id'],
-                    conversation_state['disposition'],
-                    conversation_state['lead_id'],
-                    conversation_state.get('disposition_message', ''),
-                    followup_datetime=conversation_state.get('followup_datetime')
-                )
+                #await asyncio.sleep(5)
+                # Create a task to hang up the call after a short delay
+                async def hangup_task():
+                    try:
+                        await asyncio.sleep(5)  # Small delay to ensure audio is fully played
+                        await hangup_call(
+                            conversation_state['conversation_id'],
+                            conversation_state['disposition'],
+                            conversation_state['lead_id'],
+                            conversation_state.get('disposition_message', ''),
+                            followup_datetime=conversation_state.get('followup_datetime')
+                        )
+                        return
+                    except Exception as e:
+                        print(f"[ERROR] Failed to hang up call: {e}")
+                asyncio.create_task(hangup_task())
                 return
         elif event_type == 'response.function_call_arguments.done':
             print(f'Received function call response: {response}')
