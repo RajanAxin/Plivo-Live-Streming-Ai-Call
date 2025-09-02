@@ -521,84 +521,95 @@ async def handle_message():
     # Timeout handler functions
     async def handle_timeout():
         """Handle 5-second timeout by sending 'Are you there?' message"""
-        try:
-            conversation_state['are_you_there_count'] += 1
-            import time
-            current_time = time.strftime("%H:%M:%S", time.localtime())
-            print(f"[TIMEOUT] 5 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
-
-            # Reset timeout state
-            conversation_state['timeout_task'] = None
-            conversation_state['waiting_for_user'] = False
-
-             # Reset conversation state to ensure a clean response
-            conversation_state['in_ai_response'] = False
-            conversation_state['current_ai_text'] = ''
-
-            # Check if we've reached the maximum attempts
-            if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
-                print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
-
-                # Set disposition for no response and prepare to hang up
-                conversation_state['disposition'] = 6  # Default disposition for no response
-                conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
-
-                # Create final goodbye message before hanging up
-                goodbye_response = {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"],
-                        "temperature": 0.1,
-                        "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
-                    }
-                }
-                await openai_ws.send(json.dumps(goodbye_response))
-                conversation_state['active_response'] = True
-                conversation_state['is_disposition_response'] = True
-                return
-
-            # First, cancel any active response to ensure a clean state
-            if conversation_state['active_response']:
-                cancel_response = {
-                    "type": "response.cancel"
-                }
-                await openai_ws.send(json.dumps(cancel_response))
-                conversation_state['active_response'] = False
-                # Small delay to ensure cancellation is processed
-                await asyncio.sleep(0.2)
-            # Create a conversation item that sets the context for the timeout
-            context_item = {
-                "type": "conversation.item.create",
-                "item": {
-                    "type": "message",
-                    "role": "system",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": "CRITICAL TIMEOUT INSTRUCTION: The user has not responded for 5 seconds. You MUST say ONLY the words 'Are you there?' and then stop. Do not add any other words, do not continue the conversation, and do not say anything else. This instruction overrides all previous instructions."
-                        }
-                    ]
-                }
-            }
-            await openai_ws.send(json.dumps(context_item))
-            # Small delay to ensure the context item is processed
-            await asyncio.sleep(0.2)
+    try:
+        # Check if we're already in a timeout state to prevent multiple triggers
+        if conversation_state.get('in_timeout_handling', False):
+            return
+            
+        conversation_state['in_timeout_handling'] = True
+        conversation_state['are_you_there_count'] += 1
         
-            # Create timeout response for "Are you there?"
-            timeout_response = {
+        import time
+        current_time = time.strftime("%H:%M:%S", time.localtime())
+        print(f"[TIMEOUT] 5 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
+
+        # Reset timeout state
+        conversation_state['timeout_task'] = None
+        conversation_state['waiting_for_user'] = False
+
+        # Reset conversation state to ensure a clean response
+        conversation_state['in_ai_response'] = False
+        conversation_state['current_ai_text'] = ''
+
+        # Check if we've reached the maximum attempts
+        if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
+            print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
+
+            # Set disposition for no response and prepare to hang up
+            conversation_state['disposition'] = 6  # Default disposition for no response
+            conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
+
+            # Create final goodbye message before hanging up
+            goodbye_response = {
                 "type": "response.create",
                 "response": {
                     "modalities": ["text", "audio"],
-                    "temperature": 0.0,
-                    "instructions": "Say ONLY these exact words: 'Are you there?' Do not add any other words. Do not continue the conversation. After saying this, stop and wait for the user's response."
+                    "temperature": 0.1,
+                    "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
                 }
             }
-            await openai_ws.send(json.dumps(timeout_response))
+            await openai_ws.send(json.dumps(goodbye_response))
             conversation_state['active_response'] = True
-            conversation_state['is_are_you_there_response'] = True
+            conversation_state['is_disposition_response'] = True
+            conversation_state['in_timeout_handling'] = False
+            return
 
-        except Exception as e:
-            print(f"[TIMEOUT] Error handling timeout: {e}")
+        # First, cancel any active response to ensure a clean state
+        if conversation_state.get('active_response', False):
+            cancel_response = {
+                "type": "response.cancel"
+            }
+            await openai_ws.send(json.dumps(cancel_response))
+            conversation_state['active_response'] = False
+            # Small delay to ensure cancellation is processed
+            await asyncio.sleep(0.2)
+        
+        # Create a conversation item that sets the context for the timeout
+        context_item = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "CRITICAL TIMEOUT INSTRUCTION: The user has not responded for 5 seconds. You MUST say ONLY the words 'Are you there?' and then stop. Do not add any other words, do not continue the conversation, and do not say anything else. This instruction overrides all previous instructions."
+                    }
+                ]
+            }
+        }
+        await openai_ws.send(json.dumps(context_item))
+        # Small delay to ensure the context item is processed
+        await asyncio.sleep(0.2)
+    
+        # Create timeout response for "Are you there?"
+        timeout_response = {
+            "type": "response.create",
+            "response": {
+                "modalities": ["text", "audio"],
+                "temperature": 0.0,
+                "instructions": "Say ONLY these exact words: 'Are you there?' Do not add any other words. Do not continue the conversation. After saying this, stop and wait for the user's response."
+            }
+        }
+        await openai_ws.send(json.dumps(timeout_response))
+        conversation_state['active_response'] = True
+        conversation_state['is_are_you_there_response'] = True
+        conversation_state['in_timeout_handling'] = False
+
+    except Exception as e:
+        print(f"[TIMEOUT] Error handling timeout: {e}")
+        # Ensure the timeout handling flag is reset even on error
+        conversation_state['in_timeout_handling'] = False
 
     def start_timeout_timer():
         """Start a 5-second timer for user response"""
