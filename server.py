@@ -54,7 +54,7 @@ SYSTEM_MESSAGE = (
 
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
 
-    "CRITICAL RULE: If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
+    "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 )
 
 
@@ -750,16 +750,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     conversation_state['response_items'][item_id] += delta
                 
         elif event_type == 'response.text.done':
-
-             # Special handling for "Are you there?" responses
-            if conversation_state.get('is_are_you_there_response', False):
-                actual_text = response.get('text', '') or conversation_state.get('current_ai_text', '')
-                if actual_text.strip().lower() != "are you there?":
-                    print(f"[ERROR] AI should have said 'Are you there?' but said: '{actual_text}'")
-                else:
-                    print("[TIMEOUT] AI correctly said 'Are you there?'")
-                conversation_state['is_are_you_there_response'] = False
-
             # If this is a disposition response, handle it specially
             if conversation_state.get('is_disposition_response', False):
                 text = response.get('text', '') or conversation_state.get('disposition_text', '')
