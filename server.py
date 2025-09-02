@@ -289,6 +289,7 @@ def get_followup_datetime(user_speech, timezone_id: int):
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
+    from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
     
