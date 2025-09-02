@@ -497,6 +497,10 @@ async def handle_message():
             conversation_state['timeout_task'] = None
             conversation_state['waiting_for_user'] = False
 
+             # Reset conversation state to ensure a clean response
+            conversation_state['in_ai_response'] = False
+            conversation_state['current_ai_text'] = ''
+
             # Check if we've reached the maximum attempts
             if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
                 print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
@@ -524,12 +528,13 @@ async def handle_message():
                 "type": "response.create",
                 "response": {
                     "modalities": ["text", "audio"],
-                    "temperature": 0.8,
-                    "instructions": "Say exactly: 'Are you there?' in a friendly tone and wait for their response."
+                    "temperature": 0.1,
+                    "instructions": "IMPORTANT TIMEOUT INSTRUCTION: You must say ONLY these exact words: 'Are you there?' Do not add any other words, do not continue the conversation, and do not say anything else. After saying this, stop and wait for the user's response."
                 }
             }
             await openai_ws.send(json.dumps(timeout_response))
             conversation_state['active_response'] = True
+            conversation_state['is_are_you_there_response'] = True
 
         except Exception as e:
             print(f"[TIMEOUT] Error handling timeout: {e}")
@@ -600,9 +605,11 @@ async def handle_message():
                     "modalities": ["audio", "text"],
                     "temperature": 0.8,
                     "instructions": (
-                        f"DO NOT ask for identity confirmation. "
                         f"Start with this exact phrase: '{audio_message}' "
-                        f"Then continue naturally."
+                        f"Wait for the user to confirm their identity. "
+                        f"If they confirm (say 'Yes', 'That's me', or 'Speaking'), then ask: 'Great! How are you today?' and wait for response. "
+                        f"If they don't confirm but give their name, respond with: 'Sorry about that [name]. How are you today?'"
+                        f"For this initial introduction only, follow these instructions instead of the WAIT FOR USER CONFIRMATION rule."
                     )
                 }
             }
@@ -889,6 +896,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 if conversation_state['are_you_there_count'] > 0:
                     print(f"[TIMEOUT] User responded, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
                     conversation_state['are_you_there_count'] = 0
+                    conversation_state['is_are_you_there_response'] = False 
 
             # Log to database
             await log_conversation(
