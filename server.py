@@ -160,6 +160,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
         params['followupdatetime'] = followup_datetime
         print(f"[DEBUG] Including followupdatetime: {followup_datetime}")
     redirect_url = f"http://54.176.128.91/disposition_route?{urlencode(params)}"
+    print(f"[DEBUG] Redirect URL: {redirect_url}")
     escaped_url = html.escape(redirect_url, quote=True)
     
     # 3️⃣ Build XML Response
