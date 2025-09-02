@@ -514,7 +514,7 @@ async def handle_message():
                     "type": "response.create",
                     "response": {
                         "modalities": ["text", "audio"],
-                        "temperature": 0.8,
+                        "temperature": 0.1,
                         "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
                     }
                 }
@@ -523,13 +523,40 @@ async def handle_message():
                 conversation_state['is_disposition_response'] = True
                 return
 
+            # First, cancel any active response to ensure a clean state
+            if conversation_state['active_response']:
+                cancel_response = {
+                    "type": "response.cancel"
+                }
+                await openai_ws.send(json.dumps(cancel_response))
+                conversation_state['active_response'] = False
+                # Small delay to ensure cancellation is processed
+                await asyncio.sleep(0.2)
+            # Create a conversation item that sets the context for the timeout
+            context_item = {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "CRITICAL TIMEOUT INSTRUCTION: The user has not responded for 5 seconds. You MUST say ONLY the words 'Are you there?' and then stop. Do not add any other words, do not continue the conversation, and do not say anything else. This instruction overrides all previous instructions."
+                        }
+                    ]
+                }
+            }
+            await openai_ws.send(json.dumps(context_item))
+            # Small delay to ensure the context item is processed
+            await asyncio.sleep(0.2)
+        
             # Create timeout response for "Are you there?"
             timeout_response = {
                 "type": "response.create",
                 "response": {
                     "modalities": ["text", "audio"],
-                    "temperature": 0.1,
-                    "instructions": "IMPORTANT TIMEOUT INSTRUCTION: You must say ONLY these exact words: 'Are you there?' Do not add any other words, do not continue the conversation, and do not say anything else. After saying this, stop and wait for the user's response."
+                    "temperature": 0.0,
+                    "instructions": "Say ONLY these exact words: 'Are you there?' Do not add any other words. Do not continue the conversation. After saying this, stop and wait for the user's response."
                 }
             }
             await openai_ws.send(json.dumps(timeout_response))
