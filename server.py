@@ -18,17 +18,23 @@ import aiohttp
 import re
 import html
 import time
+
 load_dotenv(dotenv_path='.env', override=True)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PLIVO_AUTH_ID = os.getenv('PLIVO_AUTH_ID')
 PLIVO_AUTH_TOKEN = os.getenv('PLIVO_AUTH_TOKEN')
+
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
+
 PORT = 5000
+
+# Updated SYSTEM_MESSAGE with clearer instructions
 SYSTEM_MESSAGE = (
-    "CRITICAL RULE: if user not respond then ONLY say exactly Are you there? . "
-    "Always speak briefly (1–2 sentences). Ask one question, then wait for the user’s response. "
-    "CRITICAL RULE: After ANY question, STOP speaking and WAIT for the user to respond. "
+    "CRITICAL RULE: After completing a FULL question, STOP speaking and WAIT for the user's response. "
+    "Always complete your sentences and thoughts before stopping. "
+    "Do not stop in the middle of a sentence or phrase. "
+    "Always speak briefly (1-2 sentences). Ask one question, then wait for the user's response. "
     "NEVER continue talking, NEVER add more context, and NEVER ask a follow-up until the user replies. "
     "INTRODUCTION RULE: At the start of the call, ONLY say: 'Hi, this is <agent_name>. Am I speaking to <lead_name>?' "
     "This introduction MUST be the ONLY thing spoken. Do not add any other words. Do not continue with any sales pitch. Do not say 'Great' or anything else. "
@@ -39,25 +45,16 @@ SYSTEM_MESSAGE = (
     "When asking how the user is doing, ONLY say exactly one of: 'How are you?' or 'Hi <lead_name>. How are you?'. Then STOP. "
     "Do not repeat the same response back-to-back. "
     "If the user says sorry then please repeat your last question. "
-
     "If the user says 'okay' or 'ok' then please ask next question. "
-
     "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?' "
     
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
-
-    "If the user says 'don’t call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
-
+    "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user asks about 'truck rental', 'van rental', or 'truck rent', respond with: 'We provide moving services, sorry to bother you. Have a great day.' "
-
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
-
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
-
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 )
-
-
 
 app = Quart(__name__)
 
@@ -156,41 +153,26 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
         "lead_id": lead_id,
         "disposition": disposition
     }
-
     if followup_datetime:
         params["followupdatetime"] = followup_datetime
         print(f"[DEBUG] Including followupdatetime: {followup_datetime}")
 
-
     # Build the URL with proper encoding
     query_string = urlencode(params, quote_via=quote)
     redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
-
-    # 3️⃣ Build XML Response
-    content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Play>{text_message}</Play>
-    <Redirect method="POST">{redirect_url}</Redirect>
-</Response>'''
-    print(f"[DEBUG] Redirect URL: {content}")
-    return Response(text=content, status=200, content_type="text/xml")
-
-
+    response = requests.post(redirect_url)
+    print(f"[DEBUG] Redirect URL: {response}")
 
 def get_timezone_from_db(timezone_id: int):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
     cursor.execute("SELECT timezone FROM mst_timezone WHERE timezone_id = %s LIMIT 1", (timezone_id,))
     row = cursor.fetchone()
-
     cursor.close()
     conn.close()
-
     if row:
         return row["timezone"]   # e.g., "Asia/Kolkata"
     return None
-
 
 # Function to check disposition based on user input
 def check_disposition(transcript, lead_timezone):
@@ -241,16 +223,13 @@ def get_followup_datetime(user_speech, timezone_id: int):
     if not tz_name:
         logging.error(f"No timezone found for ID: {timezone_id}")
         return None
-
     tz = pytz.timezone(tz_name)
     current_datetime = datetime.datetime.now(tz).strftime("%m/%d/%Y %I:%M %p")
     print(f"Speech: {user_speech} -- {current_datetime}")
     logging.info(f"Speech: {user_speech} -- {current_datetime}")
-
     system_prompt = f"""
     You are a date/time parser. Extract exact datetime from user message and return valid JSON like: {{"datetime": "MM/DD/YYYY HH:MM AM/PM"}}.
     If no datetime, use null.
-
     Instructions:
     - Assume today date and time is: {current_datetime}
     - If the user says "after half an hour","tomorrow evening","after 15 minutes","next month", "after 15th", "next week", etc., calculate based on this current date.
@@ -258,7 +237,6 @@ def get_followup_datetime(user_speech, timezone_id: int):
     - If no time is mentioned, use current time from today: {current_datetime}
     - If user says "evening", use 06:00 PM. If "morning", use 09:00 AM. If "afternoon", use 01:00 PM. If "night", use 08:00 PM.
     """
-
     try:
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -276,7 +254,6 @@ def get_followup_datetime(user_speech, timezone_id: int):
             },
             timeout=60
         )
-
         if response.status_code == 200:
             gpt_content = response.json()["choices"][0]["message"]["content"]
             data = json.loads(gpt_content)
@@ -285,11 +262,57 @@ def get_followup_datetime(user_speech, timezone_id: int):
         else:
             logging.error(f"OpenAI API failed: {response.text}")
             return None
-
     except Exception as e:
         logging.error(f"Followup datetime error: {e}")
         return None
-        
+
+# New function to create response with completion instructions
+async def create_response_with_completion_instructions(openai_ws, instructions, temperature=0.7):
+    """Create a response with explicit instructions to complete sentences"""
+    response_create = {
+        "type": "response.create",
+        "response": {
+            "modalities": ["text", "audio"],
+            "temperature": temperature,
+            "instructions": f"{instructions}\n\nIMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+        }
+    }
+    await openai_ws.send(json.dumps(response_create))
+
+# Updated send_Session_update function
+async def send_Session_update(openai_ws, prompt_text, voice_name):
+    # Combine the system message with the custom prompt
+    full_prompt = f"{SYSTEM_MESSAGE}\n\n{prompt_text}\n\nIMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+    
+    session_update = {
+        "type": "session.update",
+        "session": {
+            "turn_detection": {"type": "server_vad"},
+            "tools": [],
+            "input_audio_format": "g711_ulaw",
+            "output_audio_format": "g711_ulaw",
+            "voice": voice_name,
+            "instructions": full_prompt,
+            "modalities": ["text", "audio"],
+            "temperature": 0.7,  # Lowered temperature for more consistent responses
+            "input_audio_transcription": {"model": "whisper-1", "language": "en"} 
+        }
+    }
+    await openai_ws.send(json.dumps(session_update))
+
+def function_call_output(arg, item_id, call_id):
+    sum_val = int(arg['num1']) + int(arg['num2'])
+    conversation_item = {
+        "type": "conversation.item.create",
+        "item": {
+            "id": item_id,
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": str(sum_val)
+        }
+    }
+    return conversation_item
+
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
@@ -481,6 +504,8 @@ async def handle_message():
         'max_are_you_there': 3,  # Maximum attempts before hanging up
         'user_speaking': False,  # Track if user is currently speaking
         'is_are_you_there_response': False,  # Track if current response is "Are you there?"
+        'call_ending': False,  # Flag to indicate call is ending
+        'disposition_hangup_scheduled': False,  # NEW: Flag to prevent multiple hangup attempts
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -517,99 +542,95 @@ async def handle_message():
     # Combine with SYSTEM_MESSAGE
     prompt_to_use = f"{SYSTEM_MESSAGE}\n\n{prompt_text}"
     print(f"prompt_text: {prompt_to_use}")
-
+    
     # Timeout handler functions
     async def handle_timeout():
         """Handle 5-second timeout by sending 'Are you there?' message"""
-    try:
-        # Check if we're already in a timeout state to prevent multiple triggers
-        if conversation_state.get('in_timeout_handling', False):
-            return
+        try:
+            # Check if we're already in a timeout state to prevent multiple triggers
+            if conversation_state.get('in_timeout_handling', False):
+                return
+                
+            conversation_state['in_timeout_handling'] = True
+            conversation_state['are_you_there_count'] += 1
             
-        conversation_state['in_timeout_handling'] = True
-        conversation_state['are_you_there_count'] += 1
+            import time
+            current_time = time.strftime("%H:%M:%S", time.localtime())
+            print(f"[TIMEOUT] 5 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
+            
+            # Reset timeout state
+            conversation_state['timeout_task'] = None
+            conversation_state['waiting_for_user'] = False
+            # Reset conversation state to ensure a clean response
+            conversation_state['in_ai_response'] = False
+            conversation_state['current_ai_text'] = ''
+            
+            # Check if we've reached the maximum attempts
+            if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
+                print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
+                # Set disposition for no response and prepare to hang up
+                conversation_state['disposition'] = 6  # Default disposition for no response
+                conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
+                # Create final goodbye message before hanging up
+                goodbye_response = {
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["text", "audio"],
+                        "temperature": 0.6,  # Set to minimum allowed temperature
+                        "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
+                    }
+                }
+                await openai_ws.send(json.dumps(goodbye_response))
+                conversation_state['active_response'] = True
+                conversation_state['is_disposition_response'] = True
+                conversation_state['in_timeout_handling'] = False
+                return
+            
+            # First, cancel any active response to ensure a clean state
+            if conversation_state.get('active_response', False):
+                cancel_response = {
+                    "type": "response.cancel"
+                }
+                await openai_ws.send(json.dumps(cancel_response))
+                conversation_state['active_response'] = False
+                # Small delay to ensure cancellation is processed
+                await asyncio.sleep(0.2)
+            
+            # Create a conversation item that sets the context for the timeout
+            context_item = {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "CRITICAL TIMEOUT INSTRUCTION: The user has not responded for 5 seconds. You MUST say ONLY the words 'Are you there?' and then stop. Do not add any other words, do not continue the conversation, and do not say anything else. This instruction overrides all previous instructions."
+                        }
+                    ]
+                }
+            }
+            await openai_ws.send(json.dumps(context_item))
+            # Small delay to ensure the context item is processed
+            await asyncio.sleep(0.2)
         
-        import time
-        current_time = time.strftime("%H:%M:%S", time.localtime())
-        print(f"[TIMEOUT] 5 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
-
-        # Reset timeout state
-        conversation_state['timeout_task'] = None
-        conversation_state['waiting_for_user'] = False
-
-        # Reset conversation state to ensure a clean response
-        conversation_state['in_ai_response'] = False
-        conversation_state['current_ai_text'] = ''
-
-        # Check if we've reached the maximum attempts
-        if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
-            print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
-
-            # Set disposition for no response and prepare to hang up
-            conversation_state['disposition'] = 6  # Default disposition for no response
-            conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
-
-            # Create final goodbye message before hanging up
-            goodbye_response = {
+            # Create timeout response for "Are you there?"
+            timeout_response = {
                 "type": "response.create",
                 "response": {
                     "modalities": ["text", "audio"],
-                    "temperature": 0.1,
-                    "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
+                    "temperature": 0.6,  # Set to minimum allowed temperature
+                    "instructions": "Say ONLY these exact words: 'Are you there?' Do not add any other words. Do not continue the conversation. After saying this, stop and wait for the user's response."
                 }
             }
-            await openai_ws.send(json.dumps(goodbye_response))
+            await openai_ws.send(json.dumps(timeout_response))
             conversation_state['active_response'] = True
-            conversation_state['is_disposition_response'] = True
+            conversation_state['is_are_you_there_response'] = True
             conversation_state['in_timeout_handling'] = False
-            return
-
-        # First, cancel any active response to ensure a clean state
-        if conversation_state.get('active_response', False):
-            cancel_response = {
-                "type": "response.cancel"
-            }
-            await openai_ws.send(json.dumps(cancel_response))
-            conversation_state['active_response'] = False
-            # Small delay to ensure cancellation is processed
-            await asyncio.sleep(0.2)
-        
-        # Create a conversation item that sets the context for the timeout
-        context_item = {
-            "type": "conversation.item.create",
-            "item": {
-                "type": "message",
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": "CRITICAL TIMEOUT INSTRUCTION: The user has not responded for 5 seconds. You MUST say ONLY the words 'Are you there?' and then stop. Do not add any other words, do not continue the conversation, and do not say anything else. This instruction overrides all previous instructions."
-                    }
-                ]
-            }
-        }
-        await openai_ws.send(json.dumps(context_item))
-        # Small delay to ensure the context item is processed
-        await asyncio.sleep(0.2)
-    
-        # Create timeout response for "Are you there?"
-        timeout_response = {
-            "type": "response.create",
-            "response": {
-                "modalities": ["text", "audio"],
-                "temperature": 0.0,
-                "instructions": "Say ONLY these exact words: 'Are you there?' Do not add any other words. Do not continue the conversation. After saying this, stop and wait for the user's response."
-            }
-        }
-        await openai_ws.send(json.dumps(timeout_response))
-        conversation_state['active_response'] = True
-        conversation_state['is_are_you_there_response'] = True
-        conversation_state['in_timeout_handling'] = False
-
-    except Exception as e:
-        print(f"[TIMEOUT] Error handling timeout: {e}")
-        # Ensure the timeout handling flag is reset even on error
-        conversation_state['in_timeout_handling'] = False
+        except Exception as e:
+            print(f"[TIMEOUT] Error handling timeout: {e}")
+            # Ensure the timeout handling flag is reset even on error
+            conversation_state['in_timeout_handling'] = False
 
     def start_timeout_timer():
         """Start a 5-second timer for user response"""
@@ -617,16 +638,14 @@ async def handle_message():
         if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
             print("[TIMEOUT] Cancelling existing timeout task")
             conversation_state['timeout_task'].cancel()
-
         # Only start timer if not in a disposition flow and not already waiting
         if (not conversation_state.get('is_disposition_response', False) and
             not conversation_state.get('pending_hangup', False) and
-            not conversation_state.get('waiting_for_user', False)):
-
+            not conversation_state.get('waiting_for_user', False) and
+            not conversation_state.get('call_ending', False)):  # Check if call is ending
             print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
             conversation_state['waiting_for_user'] = True
             conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
-
             # Schedule the timeout handler
             async def timeout_wrapper():
                 try:
@@ -641,7 +660,6 @@ async def handle_message():
                     print("[TIMEOUT] ❌ Timer cancelled")
                 except Exception as e:
                     print(f"[TIMEOUT] ❌ Timer error: {e}")
-
             asyncio.create_task(timeout_wrapper())
         else:
             print(f"[TIMEOUT] ❌ Timer conditions not met - not starting timer")
@@ -670,28 +688,23 @@ async def handle_message():
             await send_Session_update(openai_ws, prompt_to_use, voice_name)
             await asyncio.sleep(0.5)
             
-            # Send the specific audio_message as initial prompt
-            initial_prompt = {
-                "type": "response.create",
-                "response": {
-                    "modalities": ["audio", "text"],
-                    "temperature": 0.8,
-                    "instructions": (
-                        f"Start with this exact phrase: '{audio_message}' "
-                        f"Wait for the user to confirm their identity. "
-                        f"If they confirm (say 'Yes', 'That's me', or 'Speaking'), then ask: 'Great! How are you today?' and wait for response. "
-                        f"If they don't confirm but give their name, respond with: 'Sorry about that [name]. How are you today?'"
-                        f"For this initial introduction only, follow these instructions instead of the WAIT FOR USER CONFIRMATION rule."
-                    )
-                }
-            }
-            await openai_ws.send(json.dumps(initial_prompt))
+            # Send the specific audio_message as initial prompt using the new function
+            initial_prompt = (
+                f"Start with this exact phrase: '{audio_message}' "
+                f"Wait for the user to confirm their identity. "
+                f"If they confirm (say 'Yes', 'That's me', or 'Speaking'), then ask: 'Great! How are you today?' and wait for response. "
+                f"If they don't confirm but give their name, respond with: 'Sorry about that [name]. How are you today?'"
+                f"For this initial introduction only, follow these instructions instead of the WAIT FOR USER CONFIRMATION rule."
+                f"IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+            )
+            
+            await create_response_with_completion_instructions(openai_ws, initial_prompt)
             conversation_state['active_response'] = True  # Mark that we have an active response
             
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
             
             async for message in openai_ws:
-                await receive_from_openai(message, plivo_ws, openai_ws, conversation_state)
+                await receive_from_openai(message, plivo_ws, openai_ws, conversation_state, handle_timeout)
             
             await receive_task
     
@@ -723,7 +736,7 @@ async def receive_from_plivo(plivo_ws, openai_ws):
     except Exception as e:
         print(f"Error during Plivo's websocket communication: {e}")
 
-async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
+async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, handle_timeout):
     try:
         response = json.loads(message)
         event_type = response.get('type', 'unknown')
@@ -774,11 +787,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     text
                 )
                 
-                # Reset disposition tracking
-                conversation_state['is_disposition_response'] = False
-                conversation_state['disposition_text'] = ''
-                
-                # Don't hang up here, wait for audio to be played
+                # Don't reset disposition tracking yet
                 return
                 
             item_id = response.get('item_id', '')
@@ -789,7 +798,16 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             
             # Use the text from the event if available, otherwise use accumulated text
             if text:
-                print(f"[LOG] AI Response: {text}")
+                print(f"[LOG] AI Text Response: {text}")
+                # Check if the response ends with a sentence terminator
+                if not any(text.endswith(punct) for punct in ['.', '!', '?']):
+                    print(f"[WARNING] AI response may be incomplete: {text}")
+                    # If the response seems incomplete, create a new response to complete it
+                    if not conversation_state.get('is_disposition_response', False):
+                        completion_prompt = f"Please complete your previous thought: '{text}'"
+                        await create_response_with_completion_instructions(openai_ws, completion_prompt)
+                        conversation_state['active_response'] = True
+                
                 # Log to database
                 await log_conversation(
                     conversation_state['lead_id'],
@@ -799,6 +817,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 )
             else:
                 print(f"[LOG] AI Response: {conversation_state['current_ai_text']}")
+                # Check if the response ends with a sentence terminator
+                if not any(conversation_state['current_ai_text'].endswith(punct) for punct in ['.', '!', '?']):
+                    print(f"[WARNING] AI response may be incomplete: {conversation_state['current_ai_text']}")
+                    # If the response seems incomplete, create a new response to complete it
+                    if not conversation_state.get('is_disposition_response', False):
+                        completion_prompt = f"Please complete your previous thought: '{conversation_state['current_ai_text']}'"
+                        await create_response_with_completion_instructions(openai_ws, completion_prompt)
+                        conversation_state['active_response'] = True
+                
                 # Log to database
                 await log_conversation(
                     conversation_state['lead_id'],
@@ -837,10 +864,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     transcript
                 )
                 
-                # Reset disposition tracking
-                conversation_state['disposition_audio_transcript'] = ''
-                
-                # Don't hang up here, wait for audio to be played
+                # Don't reset disposition tracking yet
                 return
                 
             transcript = response.get('transcript', '')
@@ -853,7 +877,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     'assistant',
                     transcript
                 )
-
             else:
                 print(f"[LOG] AI Audio Transcript: {conversation_state['ai_transcript']}")
                 # Log to database
@@ -863,9 +886,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     'assistant',
                     conversation_state['ai_transcript']
                 )
-
             conversation_state['ai_transcript'] = ''
-
 
             
         # Handle response creation
@@ -890,7 +911,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             if conversation_state.get('is_disposition_response', False) and response_id == conversation_state.get('disposition_response_id', ''):
                 print(f"[DEBUG] Disposition response completed, waiting for audio to be played")
                 # Don't reset disposition tracking yet
-                # Don't hang up here, wait for audio to be played
                 return
             
             # Log any remaining response items
@@ -908,15 +928,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             # If there's a pending language reminder, send it now
             if conversation_state.get('pending_language_reminder', False):
                 print("[LOG] Sending pending language reminder")
-                language_reminder = {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"],
-                        "temperature": 0.8,
-                        "instructions": "Politely remind the user that this conversation must be in English, then ask how you can help you today."
-                    }
-                }
-                await openai_ws.send(json.dumps(language_reminder))
+                await create_response_with_completion_instructions(
+                    openai_ws,
+                    "Politely remind the user that this conversation must be in English, then ask how you can help you today."
+                )
                 conversation_state['active_response'] = True
                 conversation_state['pending_language_reminder'] = False
             
@@ -937,8 +952,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             
         # Handle user transcriptions
         elif event_type == 'conversation.item.input_audio_transcription.completed':
+            # If the call is ending, ignore any more input
+            if conversation_state.get('call_ending', False):
+                print("[LOG] Call is ending, ignoring user input")
+                return
+                
             transcript = response.get('transcript', '')
-
              # Ignore empty or watermark/noise transcriptions
             if not transcript.strip() or transcript.strip().lower().startswith("subs by www.zeoranger.co.uk"):
                 print(f"[LOG] Ignored empty or noise user input: '{transcript}'")
@@ -956,20 +975,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 return
             print(f"[User] {transcript}")
             print(f"[LOG] User Input: {transcript}")
-
             # Cancel timeout timer when user speaks
             if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
                 conversation_state['timeout_task'].cancel()
                 print("[TIMEOUT] ❌ Timer cancelled - user responded")
                 conversation_state['waiting_for_user'] = False
                 conversation_state['timeout_task'] = None
-
                 # Reset "Are you there?" counter when user responds
                 if conversation_state['are_you_there_count'] > 0:
                     print(f"[TIMEOUT] User responded, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
                     conversation_state['are_you_there_count'] = 0
                     conversation_state['is_are_you_there_response'] = False 
-
             # Log to database
             await log_conversation(
                 conversation_state['lead_id'],
@@ -988,6 +1004,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     print(f"[LOG] Detected follow-up datetime: {followup_datetime}")
                     conversation_state['followup_datetime'] = followup_datetime
                 
+                # Mark that the call is ending
+                conversation_state['call_ending'] = True
+                
                 # Cancel any active response
                 if conversation_state['active_response']:
                     print("[LOG] Cancelling active response for disposition message")
@@ -997,31 +1016,11 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     await openai_ws.send(json.dumps(cancel_response))
                     conversation_state['active_response'] = False
                 
-                # Create a conversation item with the disposition message
-                # item = {
-                #     "type": "conversation.item.create",
-                #     "item": {
-                #         "type": "message",
-                #         "role": "assistant",
-                #         "content": [
-                #             {
-                #                 "type": "input_text",
-                #                 "text": disposition_message
-                #             }
-                #         ]
-                #     }
-                # }
-                # await openai_ws.send(json.dumps(item))
-                
-                # Then create a response that will speak this message
-                #response_create = {
-                #    "type": "response.create",
-                #    "response": {
-                #        "modalities": ["text", "audio"],
-                #        "instructions": f"Speak this exact message: '{disposition_message}' and then end the conversation."
-                #    }
-                #}
-                #await openai_ws.send(json.dumps(response_create))
+                # Create a response that will speak the disposition message
+                # await create_response_with_completion_instructions(
+                #     openai_ws,
+                #     f"Speak this exact message: '{disposition_message}' and then end the conversation."
+                # )
                 conversation_state['active_response'] = True
                 conversation_state['is_disposition_response'] = True
                 conversation_state['disposition_response_id'] = None  # Will be set when response.created is received
@@ -1043,15 +1042,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 else:
                     # Send the reminder immediately
                     print("[LOG] Sending language reminder immediately")
-                    language_reminder = {
-                        "type": "response.create",
-                        "response": {
-                            "modalities": ["text", "audio"],
-                            "temperature": 0.8,
-                            "instructions": "Politely remind the user that this conversation must be in English, then ask how you can help you today."
-                        }
-                    }
-                    await openai_ws.send(json.dumps(language_reminder))
+                    await create_response_with_completion_instructions(
+                        openai_ws,
+                        "Politely remind the user that this conversation must be in English, then ask how you can help you today."
+                    )
                     conversation_state['active_response'] = True
             
         # Handle speech started (user interruption)
@@ -1063,12 +1057,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 print("[TIMEOUT] ❌ Timer cancelled - user started speaking")
                 conversation_state['waiting_for_user'] = False
                 conversation_state['timeout_task'] = None
-
                 # Reset "Are you there?" counter when user starts speaking
                 if conversation_state['are_you_there_count'] > 0:
                     print(f"[TIMEOUT] User started speaking, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
                     conversation_state['are_you_there_count'] = 0
-
             conversation_state['user_speaking'] = True
             if conversation_state['in_ai_response']:
                 print()  # Finish current AI response line
@@ -1099,12 +1091,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 conversation_state['active_response'] = False
             else:
                 print("[LOG] No active response to cancel")
-
         # Handle speech stopped
         elif event_type == 'input_audio_buffer.speech_stopped':
             print("[TIMEOUT] User stopped speaking")
             conversation_state['user_speaking'] = False
-
         # Handle response cancelled
         elif event_type == 'response.cancelled':
             response_id = response.get('response', {}).get('id', '')
@@ -1114,15 +1104,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             # If there's a pending language reminder, send it now
             if conversation_state.get('pending_language_reminder', False):
                 print("[LOG] Sending pending language reminder after cancellation")
-                language_reminder = {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"],
-                        "temperature": 0.8,
-                        "instructions": "Politely remind the user that this conversation must be in English, then ask how you can help you today."
-                    }
-                }
-                await openai_ws.send(json.dumps(language_reminder))
+                await create_response_with_completion_instructions(
+                    openai_ws,
+                    "Politely remind the user that this conversation must be in English, then ask how you can help you today."
+                )
                 conversation_state['active_response'] = True
                 conversation_state['pending_language_reminder'] = False
             
@@ -1141,225 +1126,138 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 # If we were trying to send a language reminder, set the pending flag
                 if conversation_state.get('pending_language_reminder', False):
                     print("[LOG] Language reminder already pending")
+                    
+        # UPDATED AUDIO HANDLING STARTS HERE
         elif event_type == 'response.audio.delta':
-            # If this is a disposition response, handle it specially
-            if conversation_state.get('is_disposition_response', False):
-                # Send audio deltas for disposition responses to Plivo
-                audio_delta = {
-                   "event": "playAudio",
-                    "media": {
-                        "contentType": 'audio/x-mulaw',
-                        "sampleRate": 8000,
-                        "payload": base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
-                    }
-                }
-                await plivo_ws.send(json.dumps(audio_delta))
-                conversation_state['disposition_audio_sent'] = True
-                return
-
-            # Buffer audio chunks for smoother playback
             try:
-                # Decode the audio chunk and add to buffer
-                audio_data = base64.b64decode(response['delta'])
-                conversation_state['audio_buffer'] += audio_data
-                conversation_state['total_audio_bytes'] += len(audio_data)
-
-                # Mark audio start time on first chunk
-                if conversation_state['audio_start_time'] is None:
-                    import time
-                    conversation_state['audio_start_time'] = time.time()
-
-                # Function to flush the audio buffer
-                async def flush_audio_buffer():
-                    if conversation_state['audio_buffer']:
-                        # Send the buffered audio as one chunk
-                        encoded_payload = base64.b64encode(conversation_state['audio_buffer']).decode('utf-8')
-                        audio_delta = {
-                           "event": "playAudio",
-                            "media": {
-                                "contentType": 'audio/x-mulaw',
-                                "sampleRate": 8000,
-                                "payload": encoded_payload
-                            }
-                        }
-                        await plivo_ws.send(json.dumps(audio_delta))
-                        conversation_state['audio_buffer'] = b''  # Clear buffer
-                        conversation_state['audio_buffer_timer'] = None
-
-                # Cancel existing timer and set new one
-                if conversation_state['audio_buffer_timer']:
-                    conversation_state['audio_buffer_timer'].cancel()
-
-                # Flush buffer after 50ms or when it gets large enough
-                buffer_size = len(conversation_state['audio_buffer'])
-                if buffer_size > 1600:  # ~100ms of audio at 8kHz μ-law
-                    await flush_audio_buffer()
-                else:
-                    # Set timer to flush after 50ms
-                    conversation_state['audio_buffer_timer'] = asyncio.create_task(
-                        asyncio.sleep(0.05)
-                    )
-
-                    async def delayed_flush():
-                        try:
-                            await conversation_state['audio_buffer_timer']
-                            await flush_audio_buffer()
-                        except asyncio.CancelledError:
-                            pass
-
-                    asyncio.create_task(delayed_flush())
-
-            except Exception as e:
-                print(f"[ERROR] Failed to buffer audio chunk: {e}")
-        elif event_type == 'response.audio.done':
-            # Flush any remaining audio buffer
-            if conversation_state['audio_buffer']:
-                try:
-                    encoded_payload = base64.b64encode(conversation_state['audio_buffer']).decode('utf-8')
+                # If this is a disposition response, handle it specially
+                if conversation_state.get('is_disposition_response', False):
+                    # Send audio deltas for disposition responses directly to Plivo
                     audio_delta = {
-                       "event": "playAudio",
+                        "event": "playAudio",
                         "media": {
                             "contentType": 'audio/x-mulaw',
                             "sampleRate": 8000,
-                            "payload": encoded_payload
+                            "payload": response['delta']  # Already base64 encoded
                         }
                     }
                     await plivo_ws.send(json.dumps(audio_delta))
-                    conversation_state['audio_buffer'] = b''
-                except Exception as e:
-                    print(f"[ERROR] Failed to flush final audio buffer: {e}")
-
-            # Cancel any pending buffer timer
-            if conversation_state['audio_buffer_timer']:
-                conversation_state['audio_buffer_timer'].cancel()
-                conversation_state['audio_buffer_timer'] = None
-
-            # Calculate proper delay based on actual audio length
-            async def delayed_completion_log():
-                # Calculate audio duration: μ-law is 8000 samples/sec, 1 byte per sample
-                audio_duration_seconds = conversation_state['total_audio_bytes'] / 8000.0
-
-                # Calculate how much audio should still be playing
-                import time
-                elapsed_since_start = time.time() - (conversation_state['audio_start_time'] or time.time())
-                remaining_audio_time = max(0, audio_duration_seconds - elapsed_since_start)
-
-                # Add buffer for telephony delay
-                total_delay = remaining_audio_time + 0.5  # 500ms telephony buffer
-
-                print(f"[DEBUG] Audio duration: {audio_duration_seconds:.2f}s, elapsed: {elapsed_since_start:.2f}s, waiting: {total_delay:.2f}s")
-                await asyncio.sleep(total_delay)
-                print("[LOG] ✅ AI Audio completed - AI has finished speaking and audio playback complete")
-
-                # Reset audio tracking
-                conversation_state['total_audio_bytes'] = 0
-                conversation_state['audio_start_time'] = None
-
-                # Start 5-second timeout timer for user response
-                if not conversation_state.get('is_disposition_response', False):
-                    # Check if this was an "Are you there?" response
-                    if conversation_state.get('is_are_you_there_response', False):
-                        print("[TIMEOUT] 'Are you there?' audio completed, restarting timeout timer")
-                        conversation_state['is_are_you_there_response'] = False
-
-                    # Start timer inline
-                    if (not conversation_state.get('pending_hangup', False) and
-                        not conversation_state.get('waiting_for_user', False)):
-
-                        print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
-                        conversation_state['waiting_for_user'] = True
-                        conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
-
-                        # Schedule the timeout handler
-                        async def timeout_wrapper():
-                            try:
-                                print("[TIMEOUT] ⏱️ Starting 5-second countdown...")
-                                await conversation_state['timeout_task']
-                                if conversation_state.get('waiting_for_user', False):
-                                    print("[TIMEOUT] ⏰ 5 seconds elapsed! Handling timeout...")
-
-                                    # Handle timeout inline
-                                    conversation_state['are_you_there_count'] += 1
-                                    import time
-                                    current_time = time.strftime("%H:%M:%S", time.localtime())
-                                    print(f"[TIMEOUT] 5 seconds elapsed at {current_time} without user response, sending 'Are you there?' (attempt {conversation_state['are_you_there_count']}/{conversation_state['max_are_you_there']})")
-
-                                    # Reset timeout state
-                                    conversation_state['timeout_task'] = None
-                                    conversation_state['waiting_for_user'] = False
-
-                                    # Check if we've reached the maximum attempts
-                                    if conversation_state['are_you_there_count'] >= conversation_state['max_are_you_there']:
-                                        print(f"[TIMEOUT] Reached maximum 'Are you there?' attempts ({conversation_state['max_are_you_there']}), disconnecting call")
-
-                                        # Set disposition for no response and prepare to hang up
-                                        conversation_state['disposition'] = 6
-                                        conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
-
-                                        # Create final goodbye message before hanging up
-                                        goodbye_response = {
-                                            "type": "response.create",
-                                            "response": {
-                                                "modalities": ["text", "audio"],
-                                                "temperature": 0.8,
-                                                "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
-                                            }
-                                        }
-                                        await openai_ws.send(json.dumps(goodbye_response))
-                                        conversation_state['active_response'] = True
-                                        conversation_state['is_disposition_response'] = True
-                                    else:
-                                        # Create timeout response for "Are you there?"
-                                        timeout_response = {
-                                            "type": "response.create",
-                                            "response": {
-                                                "modalities": ["text", "audio"],
-                                                "temperature": 0.8,
-                                                "instructions": "Say exactly: 'Are you there?' in a friendly tone and wait for their response."
-                                            }
-                                        }
-                                        await openai_ws.send(json.dumps(timeout_response))
-                                        conversation_state['active_response'] = True
-                                        conversation_state['is_are_you_there_response'] = True
-                                else:
-                                    print("[TIMEOUT] ⏰ Timer completed but waiting_for_user=False")
-                            except asyncio.CancelledError:
-                                print("[TIMEOUT] ❌ Timer cancelled")
-                            except Exception as e:
-                                print(f"[TIMEOUT] ❌ Timer error: {e}")
-
-                        asyncio.create_task(timeout_wrapper())
-
-            asyncio.create_task(delayed_completion_log())
-
-            # If this is a disposition response, handle it specially
-            if conversation_state.get('is_disposition_response', False) and conversation_state.get('disposition_audio_sent', False):
-                print(f"[LOG] Disposition audio completed, hanging up call")
-
-                # Reset disposition tracking
-                conversation_state['is_disposition_response'] = False
-                conversation_state['disposition_response_id'] = None
-                conversation_state['disposition_audio_sent'] = False
-
-                # Hang up the call immediately after the disposition audio is done
-                print(f"[LOG] Hanging up call with disposition {conversation_state['disposition']}")
-                #await asyncio.sleep(5)
-                # Create a task to hang up the call after a short delay
-                async def hangup_task():
+                    # Don't set disposition_audio_sent here - we're still sending
+                    return
+                
+                # For regular responses, send audio chunks immediately without buffering
+                audio_delta = {
+                    "event": "playAudio",
+                    "media": {
+                        "contentType": 'audio/x-mulaw',
+                        "sampleRate": 8000,
+                        "payload": response['delta']  # Already base64 encoded
+                    }
+                }
+                await plivo_ws.send(json.dumps(audio_delta))
+                
+                # Track audio bytes for timing calculation
+                audio_bytes = len(base64.b64decode(response['delta']))
+                conversation_state['total_audio_bytes'] += audio_bytes
+                
+                # Set start time on first chunk
+                if conversation_state['audio_start_time'] is None:
+                    import time
+                    conversation_state['audio_start_time'] = time.time()
+                    
+                # Add logging for audio chunks
+                print(f"[AUDIO] Sending chunk: {len(response['delta'])} bytes, total so far: {conversation_state['total_audio_bytes']} bytes")
+                    
+            except Exception as e:
+                print(f"[ERROR] Failed to send audio chunk: {e}")
+                
+        elif event_type == 'response.audio.done':
+            try:
+                # Calculate actual audio duration (μ-law: 8000 bytes/sec)
+                audio_duration = conversation_state['total_audio_bytes'] / 8000.0
+                
+                # Add a fixed buffer for network/telephony latency
+                total_delay = audio_duration + 2.0  # 2 second buffer
+                
+                print(f"[DEBUG] Audio duration: {audio_duration:.2f}s, total delay: {total_delay:.2f}s")
+                
+                # Create a task to handle completion after audio finishes
+                async def handle_audio_completion():
                     try:
-                        await asyncio.sleep(5)  # Small delay to ensure audio is fully played
-                        await hangup_call(
-                            conversation_state['conversation_id'],
-                            conversation_state['disposition'],
-                            conversation_state['lead_id'],
-                            conversation_state.get('disposition_message', ''),
-                            followup_datetime=conversation_state.get('followup_datetime')
-                        )
-                        return
+                        await asyncio.sleep(total_delay)
+                        print("[LOG] ✅ AI Audio completed - Full playback finished")
+                        
+                        # Reset audio tracking
+                        conversation_state['total_audio_bytes'] = 0
+                        conversation_state['audio_start_time'] = None
+                        
+                        # Start timeout for user response (if not disposition)
+                        if not conversation_state.get('is_disposition_response', False):
+                            # Check if this was an "Are you there?" response
+                            if conversation_state.get('is_are_you_there_response', False):
+                                print("[TIMEOUT] 'Are you there?' audio completed, restarting timeout timer")
+                                conversation_state['is_are_you_there_response'] = False
+                            
+                            # Start timeout timer
+                            if (not conversation_state.get('pending_hangup', False) and
+                                not conversation_state.get('waiting_for_user', False) and
+                                not conversation_state.get('call_ending', False)):
+                                print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
+                                conversation_state['waiting_for_user'] = True
+                                conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
+                                
+                                # Schedule the timeout handler
+                                async def timeout_wrapper():
+                                    try:
+                                        print("[TIMEOUT] ⏱️ Starting 5-second countdown...")
+                                        await conversation_state['timeout_task']
+                                        if conversation_state.get('waiting_for_user', False):
+                                            print("[TIMEOUT] ⏰ 5 seconds elapsed! Handling timeout...")
+                                            # Handle timeout
+                                            await handle_timeout()
+                                        else:
+                                            print("[TIMEOUT] ⏰ Timer completed but waiting_for_user=False")
+                                    except asyncio.CancelledError:
+                                        print("[TIMEOUT] ❌ Timer cancelled")
+                                    except Exception as e:
+                                        print(f"[TIMEOUT] ❌ Timer error: {e}")
+                                
+                                asyncio.create_task(timeout_wrapper())
                     except Exception as e:
-                        print(f"[ERROR] Failed to hang up call: {e}")
-                asyncio.create_task(hangup_task())
-                return
+                        print(f"[ERROR] Error in audio completion handler: {e}")
+                
+                asyncio.create_task(handle_audio_completion())
+                
+                # If this is a disposition response, handle it specially
+                if conversation_state.get('is_disposition_response', False):
+                    print(f"[LOG] Disposition audio completed, scheduling hangup")
+                    
+                    # Only schedule hangup if not already scheduled
+                    if not conversation_state.get('disposition_hangup_scheduled', False):
+                        conversation_state['disposition_hangup_scheduled'] = True
+                        
+                        # Create a task to hang up the call after a longer delay
+                        async def hangup_task():
+                            try:
+                                # Increase delay to 5 seconds to ensure full audio playback
+                                await asyncio.sleep(5)  
+                                await hangup_call(
+                                    conversation_state['conversation_id'],
+                                    conversation_state['disposition'],
+                                    conversation_state['lead_id'],
+                                    conversation_state.get('disposition_message', ''),
+                                    followup_datetime=conversation_state.get('followup_datetime')
+                                )
+                            except Exception as e:
+                                print(f"[ERROR] Failed to hang up call: {e}")
+                        
+                        asyncio.create_task(hangup_task())
+                    return
+                    
+            except Exception as e:
+                print(f"[ERROR] Failed to handle audio done event: {e}")
+        # UPDATED AUDIO HANDLING ENDS HERE
+                
         elif event_type == 'response.function_call_arguments.done':
             print(f'Received function call response: {response}')
             if response['name'] == 'calc_sum':
@@ -1380,50 +1278,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
-
-async def send_Session_update(openai_ws, prompt_text, voice_name):
-    session_update = {
-        "type": "session.update",
-        "session": {
-            "turn_detection": {"type": "server_vad"},
-            "tools": [
-                # {
-                #     "type": "function",
-                #     "name": "calc_sum",
-                #     "description": "Get the sum of two numbers",
-                #     "parameters": {
-                #         "type": "object",
-                #         "properties": {
-                #             "num1": { "type": "string", "description": "the first number" },
-                #             'num2': { "type": "string", "description": "the seconds number" }
-                #         },
-                #         "required": ["num1", "num2"]
-                #     }
-                # }
-            ],
-            "input_audio_format": "g711_ulaw",
-            "output_audio_format": "g711_ulaw",
-            "voice": voice_name,
-            "instructions": prompt_text,
-            "modalities": ["text", "audio"],
-            "temperature": 0.8,
-           "input_audio_transcription": {"model": "whisper-1", "language": "en"} 
-        }
-    }
-    await openai_ws.send(json.dumps(session_update))
-
-def function_call_output(arg, item_id, call_id):
-    sum_val = int(arg['num1']) + int(arg['num2'])
-    conversation_item = {
-        "type": "conversation.item.create",
-        "item": {
-            "id": item_id,
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": str(sum_val)
-        }
-    }
-    return conversation_item
 
 if __name__ == "__main__":
     print('Starting server to handle inbound Plivo calls...')
