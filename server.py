@@ -203,8 +203,8 @@ def check_disposition(transcript, lead_timezone):
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
     
     # Pattern 5: Truck rental
-    elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
-        return 13, "We are providing moving services, sorry to bother you. Have a great day", None
+    #elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
+    #    return 13, "We are providing moving services, sorry to bother you. Have a great day", None
     
     # Pattern 6: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
@@ -964,7 +964,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 return
             
             # Ignore common false positives and very short generic responses
-            false_positives = {"yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you", "Bye", "thanks", "Much"}
+            false_positives = {"yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you", "Bye", "Bye.", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening." }
             if transcript.strip().lower() in false_positives:
                 print(f"[LOG] Ignored likely false positive user input: '{transcript}'")
                 return
