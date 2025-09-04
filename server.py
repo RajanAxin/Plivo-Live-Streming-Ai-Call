@@ -957,35 +957,55 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 print("[LOG] Call is ending, ignoring user input")
                 return
                 
-            transcript = response.get('transcript', '')
-             # Ignore empty or watermark/noise transcriptions
-            if not transcript.strip() or transcript.strip().lower().startswith("subs by www.zeoranger.co.uk"):
-                print(f"[LOG] Ignored empty or noise user input: '{transcript}'")
+            transcript = response.get('transcript', '').strip()
+
+            # 1️⃣ Reject empty or very short transcripts
+            if not transcript or len(transcript) < 2:
+                print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
                 return
-            
-            # Ignore common false positives and very short generic responses
-            false_positives = {"yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you", "Bye", "Bye.", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening." }
-            if transcript.strip().lower() in false_positives:
-                print(f"[LOG] Ignored likely false positive user input: '{transcript}'")
+
+            # 2️⃣ Ignore watermark/noise artifacts
+            if transcript.lower().startswith("subs by www.zeoranger.co.uk"):
+                print(f"[LOG] Ignored watermark/noise transcript: '{transcript}'")
                 return
-            
-            # Optionally, ignore single-word responses under 4 characters (often noise)
-            if len(transcript.strip().split()) == 1 and len(transcript.strip()) <= 3:
-                print(f"[LOG] Ignored very short user input: '{transcript}'")
+
+            # 3️⃣ Ignore known false positives
+            false_positives = {
+                "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing",
+                "thank you", "thanks", "bye", "much", "alright", "all right",
+                "same here", "good evening"
+            }
+            if transcript.lower() in false_positives:
+                print(f"[LOG] Ignored likely false positive: '{transcript}'")
                 return
+
+            # 4️⃣ Ignore very short noise-like inputs (1–2 short words)
+            words = transcript.split()
+            if len(words) <= 2 and all(len(w) <= 3 for w in words):
+                print(f"[LOG] Ignored noise-like input: '{transcript}'")
+                return
+
+            # 5️⃣ (Optional) Whisper confidence check, if available
+            confidence = response.get("confidence", 1.0)  # fallback = 1.0
+            if confidence < 0.85:
+                print(f"[LOG] Ignored low-confidence transcript ({confidence:.2f}): '{transcript}'")
+                return
+
+            # ✅ Passed filters → treat as real user input
             print(f"[User] {transcript}")
             print(f"[LOG] User Input: {transcript}")
+
             # Cancel timeout timer when user speaks
             if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
                 conversation_state['timeout_task'].cancel()
                 print("[TIMEOUT] ❌ Timer cancelled - user responded")
                 conversation_state['waiting_for_user'] = False
                 conversation_state['timeout_task'] = None
-                # Reset "Are you there?" counter when user responds
-                if conversation_state['are_you_there_count'] > 0:
-                    print(f"[TIMEOUT] User responded, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
-                    conversation_state['are_you_there_count'] = 0
-                    conversation_state['is_are_you_there_response'] = False 
+            if conversation_state['are_you_there_count'] > 0:
+                print(f"[TIMEOUT] Resetting 'Are you there?' counter")
+                conversation_state['are_you_there_count'] = 0
+                conversation_state['is_are_you_there_response'] = False 
+
             # Log to database
             await log_conversation(
                 conversation_state['lead_id'],
