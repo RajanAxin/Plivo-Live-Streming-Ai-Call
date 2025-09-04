@@ -971,7 +971,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
 
             # 3️⃣ Ignore known false positives
             false_positives = {
-              "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you", "Bye", "Bye.", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening." 
+              "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening." 
             }
             if transcript.lower() in false_positives:
                 print(f"[LOG] Ignored likely false positive: '{transcript}'")
