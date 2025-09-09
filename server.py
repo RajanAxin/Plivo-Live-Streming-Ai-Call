@@ -18,17 +18,13 @@ import aiohttp
 import re
 import html
 import time
-
 load_dotenv(dotenv_path='.env', override=True)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PLIVO_AUTH_ID = os.getenv('PLIVO_AUTH_ID')
 PLIVO_AUTH_TOKEN = os.getenv('PLIVO_AUTH_TOKEN')
-
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
-
 PORT = 5000
-
 # Updated SYSTEM_MESSAGE with clearer instructions
 SYSTEM_MESSAGE = (
     "CRITICAL RULE: After completing a FULL question, STOP speaking and WAIT for the user's response. "
@@ -36,6 +32,7 @@ SYSTEM_MESSAGE = (
     "Do not stop in the middle of a sentence or phrase. "
     "Always speak briefly (1-2 sentences). Ask one question, then wait for the user's response. "
     "NEVER continue talking, NEVER add more context, and NEVER ask a follow-up until the user replies. "
+    "Important: If the user says 'Sorry' or i can't hear you then Please repet a previous question. "
     "INTRODUCTION RULE: At the start of the call, ONLY say: 'Hi, this is <agent_name>. Am I speaking to <lead_name>?' "
     "This introduction MUST be the ONLY thing spoken. Do not add any other words. Do not continue with any sales pitch. Do not say 'Great' or anything else. "
     "If the user answers, then continue the conversation based on their response. "
@@ -47,7 +44,6 @@ SYSTEM_MESSAGE = (
     "If the user says sorry then please repeat your last question. "
     "If the user says 'okay' or 'ok' then please ask next question. "
     "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?' "
-    
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
     #"If the user asks about 'truck rental', 'van rental', or 'truck rent', respond with: 'We provide moving services, sorry to bother you. Have a great day.' "
@@ -125,6 +121,73 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
         print("Plivo credentials not set. Cannot hang up call.")
         return
     
+    # Handle disposition 1 (call transfer) differently
+    if disposition == 1:
+        try:
+            print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+            
+            # Fetch lead data from database
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
+                lead_data = cursor.fetchone()
+                cursor.close()
+                conn.close()
+            else:
+                raise Exception("Failed to get database connection")
+            
+            if not lead_data:
+                raise Exception(f"Lead not found for lead_id: {lead_id}")
+            
+            print(f"[TRANSFER] Lead Data: {lead_data['phone']}")
+            
+            # Prepare the payload
+            payload = {
+                'id': lead_data['t_call_id'],
+                'action': 1,
+                'type': 1,
+                'review_call': 0,
+                'accept_call': 0,
+                'rep_id': lead_data['t_rep_id'],
+                'logic_check': 1,
+                'lead_id': lead_data['t_lead_id'],
+                'categoryId': 1,
+                'buffer_id_arr': '',
+                'campaignId': lead_data['campaign_id'],
+                'campaignScore': lead_data['campaign_score'],
+                'campaignNumber': lead_data['mover_phone'],
+                'campaignPayout': lead_data['campaign_payout']
+            }
+            
+            # Determine URL based on phone number
+            if lead_data['phone'] == "6025298353":
+                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+            else:
+                url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+            
+            print(f"[TRANSFER] Using URL: {url}")
+            
+            # Make the API call
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(payload)
+                ) as resp:
+                    if resp.status == 200:
+                        response_text = await resp.text()
+                        print(f"[TRANSFER] API call successful: {response_text}")
+                        return
+                    else:
+                        response_text = await resp.text()
+                        raise Exception(f"API call failed with status {resp.status}: {response_text}")
+        
+        except Exception as e:
+            print(f"[TRANSFER] Error: {e}")
+            # Continue with normal hangup if transfer fails
+    
+    # Original hangup logic for other dispositions or failed transfers
     # 1️⃣ Hang up the call via Plivo API
     url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
     auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
@@ -156,7 +219,6 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     if followup_datetime:
         params["followupdatetime"] = followup_datetime
         print(f"[DEBUG] Including followupdatetime: {followup_datetime}")
-
     # Build the URL with proper encoding
     query_string = urlencode(params, quote_via=quote)
     redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
@@ -216,6 +278,21 @@ def check_disposition(transcript, lead_timezone):
     
     # Default disposition
     return 6, None, None
+
+# NEW: Function to check AI speech for moving-related keywords
+def check_ai_disposition(transcript):
+    """Check if AI speech contains moving-related keywords and return disposition if found"""
+    transcript_lower = transcript.lower()
+    moving_keywords = [
+        "moving specialist", "moving agent", "moving company",
+        "moving service", "moving help", "moving assistance", "moving representative"
+    ]
+    
+    for keyword in moving_keywords:
+        if keyword in transcript_lower:
+            print(f"[AI DISPOSITION] Detected keyword '{keyword}' in AI speech: {transcript}")
+            return 1, "call transfer", None
+    return None, None, None
 
 def get_followup_datetime(user_speech, timezone_id: int):
     # Fetch timezone from DB
@@ -505,7 +582,9 @@ async def handle_message():
         'user_speaking': False,  # Track if user is currently speaking
         'is_are_you_there_response': False,  # Track if current response is "Are you there?"
         'call_ending': False,  # Flag to indicate call is ending
-        'disposition_hangup_scheduled': False,  # NEW: Flag to prevent multiple hangup attempts
+        'disposition_hangup_scheduled': False,  # Flag to prevent multiple hangup attempts
+        'expecting_user_response': False,  # NEW: Flag to indicate we're expecting a user response
+        'transfer_initiated': False,  # NEW: Flag to prevent multiple transfer attempts
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -561,6 +640,7 @@ async def handle_message():
             # Reset timeout state
             conversation_state['timeout_task'] = None
             conversation_state['waiting_for_user'] = False
+            conversation_state['expecting_user_response'] = False  # Reset flag
             # Reset conversation state to ensure a clean response
             conversation_state['in_ai_response'] = False
             conversation_state['current_ai_text'] = ''
@@ -626,6 +706,7 @@ async def handle_message():
             await openai_ws.send(json.dumps(timeout_response))
             conversation_state['active_response'] = True
             conversation_state['is_are_you_there_response'] = True
+            conversation_state['expecting_user_response'] = True  # We're now expecting a response
             conversation_state['in_timeout_handling'] = False
         except Exception as e:
             print(f"[TIMEOUT] Error handling timeout: {e}")
@@ -642,7 +723,8 @@ async def handle_message():
         if (not conversation_state.get('is_disposition_response', False) and
             not conversation_state.get('pending_hangup', False) and
             not conversation_state.get('waiting_for_user', False) and
-            not conversation_state.get('call_ending', False)):  # Check if call is ending
+            not conversation_state.get('call_ending', False) and
+            not conversation_state.get('transfer_initiated', False)):  # Check if transfer is in progress
             print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
             conversation_state['waiting_for_user'] = True
             conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
@@ -673,7 +755,8 @@ async def handle_message():
             print("[TIMEOUT] ❌ Timer cancel requested but no active timer")
         conversation_state['waiting_for_user'] = False
         conversation_state['timeout_task'] = None
-    
+        conversation_state['expecting_user_response'] = False  # Reset flag
+
     url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -815,6 +898,55 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     'assistant',
                     text
                 )
+                
+                # NEW: Check if we're expecting a user response
+                # Check if the AI response ends with a question mark or is asking for information
+                if text.endswith('?') or any(phrase in text.lower() for phrase in [
+                    'how are you', 'am i speaking to', 'can you tell me', 'do you need', 
+                    'would you like', 'are you interested', 'what is your', 'when would you',
+                    'where are you', 'why are you', 'which one', 'how many', 'how much',
+                    'can i help', 'may i help', 'what can i', 'how can i', 'is there',
+                    'are there', 'do you have', 'have you', 'did you', 'will you'
+                ]):
+                    conversation_state['expecting_user_response'] = True
+                    print(f"[DEBUG] AI asked a question, expecting user response")
+                else:
+                    conversation_state['expecting_user_response'] = False
+                    print(f"[DEBUG] AI made a statement, not expecting immediate response")
+                
+                # NEW: Check AI speech for moving-related keywords
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
+                    disposition, disposition_message, followup_datetime = check_ai_disposition(text)
+                    if disposition:
+                        print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
+                        conversation_state['disposition'] = disposition
+                        conversation_state['disposition_message'] = disposition_message
+                        conversation_state['is_disposition_response'] = True
+                        conversation_state['disposition_response_id'] = response.get('response_id', '')
+                        
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
+                        if disposition == 1:
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
+                        else:
+                            # For other dispositions, mark that the call is ending
+                            conversation_state['call_ending'] = True
             else:
                 print(f"[LOG] AI Response: {conversation_state['current_ai_text']}")
                 # Check if the response ends with a sentence terminator
@@ -833,6 +965,55 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     'assistant',
                     conversation_state['current_ai_text']
                 )
+                
+                # NEW: Check if we're expecting a user response
+                # Check if the AI response ends with a question mark or is asking for information
+                if conversation_state['current_ai_text'].endswith('?') or any(phrase in conversation_state['current_ai_text'].lower() for phrase in [
+                    'how are you', 'am i speaking to', 'can you tell me', 'do you need', 
+                    'would you like', 'are you interested', 'what is your', 'when would you',
+                    'where are you', 'why are you', 'which one', 'how many', 'how much',
+                    'can i help', 'may i help', 'what can i', 'how can i', 'is there',
+                    'are there', 'do you have', 'have you', 'did you', 'will you'
+                ]):
+                    conversation_state['expecting_user_response'] = True
+                    print(f"[DEBUG] AI asked a question, expecting user response")
+                else:
+                    conversation_state['expecting_user_response'] = False
+                    print(f"[DEBUG] AI made a statement, not expecting immediate response")
+                
+                # NEW: Check AI speech for moving-related keywords
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
+                    disposition, disposition_message, followup_datetime = check_ai_disposition(conversation_state['current_ai_text'])
+                    if disposition:
+                        print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
+                        conversation_state['disposition'] = disposition
+                        conversation_state['disposition_message'] = disposition_message
+                        conversation_state['is_disposition_response'] = True
+                        conversation_state['disposition_response_id'] = response.get('response_id', '')
+                        
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
+                        if disposition == 1:
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
+                        else:
+                            # For other dispositions, mark that the call is ending
+                            conversation_state['call_ending'] = True
                 
             conversation_state['current_ai_text'] = ''
             
@@ -877,6 +1058,55 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     'assistant',
                     transcript
                 )
+                
+                # NEW: Check if we're expecting a user response
+                # Check if the AI response ends with a question mark or is asking for information
+                if transcript.endswith('?') or any(phrase in transcript.lower() for phrase in [
+                    'how are you', 'am i speaking to', 'can you tell me', 'do you need', 
+                    'would you like', 'are you interested', 'what is your', 'when would you',
+                    'where are you', 'why are you', 'which one', 'how many', 'how much',
+                    'can i help', 'may i help', 'what can i', 'how can i', 'is there',
+                    'are there', 'do you have', 'have you', 'did you', 'will you'
+                ]):
+                    conversation_state['expecting_user_response'] = True
+                    print(f"[DEBUG] AI asked a question, expecting user response")
+                else:
+                    conversation_state['expecting_user_response'] = False
+                    print(f"[DEBUG] AI made a statement, not expecting immediate response")
+                
+                # NEW: Check AI speech for moving-related keywords
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
+                    disposition, disposition_message, followup_datetime = check_ai_disposition(transcript)
+                    if disposition:
+                        print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
+                        conversation_state['disposition'] = disposition
+                        conversation_state['disposition_message'] = disposition_message
+                        conversation_state['is_disposition_response'] = True
+                        conversation_state['disposition_response_id'] = response.get('response_id', '')
+                        
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
+                        if disposition == 1:
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
+                        else:
+                            # For other dispositions, mark that the call is ending
+                            conversation_state['call_ending'] = True
             else:
                 print(f"[LOG] AI Audio Transcript: {conversation_state['ai_transcript']}")
                 # Log to database
@@ -886,8 +1116,56 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     'assistant',
                     conversation_state['ai_transcript']
                 )
+                
+                # NEW: Check if we're expecting a user response
+                # Check if the AI response ends with a question mark or is asking for information
+                if conversation_state['ai_transcript'].endswith('?') or any(phrase in conversation_state['ai_transcript'].lower() for phrase in [
+                    'how are you', 'am i speaking to', 'can you tell me', 'do you need', 
+                    'would you like', 'are you interested', 'what is your', 'when would you',
+                    'where are you', 'why are you', 'which one', 'how many', 'how much',
+                    'can i help', 'may i help', 'what can i', 'how can i', 'is there',
+                    'are there', 'do you have', 'have you', 'did you', 'will you'
+                ]):
+                    conversation_state['expecting_user_response'] = True
+                    print(f"[DEBUG] AI asked a question, expecting user response")
+                else:
+                    conversation_state['expecting_user_response'] = False
+                    print(f"[DEBUG] AI made a statement, not expecting immediate response")
+                
+                # NEW: Check AI speech for moving-related keywords
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
+                    disposition, disposition_message, followup_datetime = check_ai_disposition(conversation_state['ai_transcript'])
+                    if disposition:
+                        print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
+                        conversation_state['disposition'] = disposition
+                        conversation_state['disposition_message'] = disposition_message
+                        conversation_state['is_disposition_response'] = True
+                        conversation_state['disposition_response_id'] = response.get('response_id', '')
+                        
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
+                        if disposition == 1:
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
+                        else:
+                            # For other dispositions, mark that the call is ending
+                            conversation_state['call_ending'] = True
             conversation_state['ai_transcript'] = ''
-
             
         # Handle response creation
         elif event_type == 'response.created':
@@ -952,23 +1230,20 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
         # Handle user transcriptions
         elif event_type == 'conversation.item.input_audio_transcription.completed':
-            # If the call is ending, ignore any more input
-            if conversation_state.get('call_ending', False):
-                print("[LOG] Call is ending, ignoring user input")
+            # If the call is ending or transfer is initiated, ignore any more input
+            if conversation_state.get('call_ending', False) or conversation_state.get('transfer_initiated', False):
+                print("[LOG] Call is ending or transfer initiated, ignoring user input")
                 return
                 
             transcript = response.get('transcript', '').strip()
-
             # 1️⃣ Reject empty or very short transcripts
             if not transcript or len(transcript) < 2:
                 print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
                 return
-
             # 2️⃣ Ignore watermark/noise artifacts
             if transcript.lower().startswith("subs by www.zeoranger.co.uk"):
                 print(f"[LOG] Ignored watermark/noise transcript: '{transcript}'")
                 return
-
             # 3️⃣ Ignore known false positives
             false_positives = {
               "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening." 
@@ -976,34 +1251,30 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             if transcript.lower() in false_positives:
                 print(f"[LOG] Ignored likely false positive: '{transcript}'")
                 return
-
             # 4️⃣ Ignore very short noise-like inputs (1–2 short words)
             words = transcript.split()
             if len(words) <= 2 and all(len(w) <= 3 for w in words):
                 print(f"[LOG] Ignored noise-like input: '{transcript}'")
                 return
-
             # 5️⃣ (Optional) Whisper confidence check, if available
             confidence = response.get("confidence", 1.0)  # fallback = 1.0
             if confidence < 0.85:
                 print(f"[LOG] Ignored low-confidence transcript ({confidence:.2f}): '{transcript}'")
                 return
-
             # ✅ Passed filters → treat as real user input
             print(f"[User] {transcript}")
             print(f"[LOG] User Input: {transcript}")
-
             # Cancel timeout timer when user speaks
             if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
                 conversation_state['timeout_task'].cancel()
                 print("[TIMEOUT] ❌ Timer cancelled - user responded")
                 conversation_state['waiting_for_user'] = False
                 conversation_state['timeout_task'] = None
+                conversation_state['expecting_user_response'] = False  # Reset flag
             if conversation_state['are_you_there_count'] > 0:
                 print(f"[TIMEOUT] Resetting 'Are you there?' counter")
                 conversation_state['are_you_there_count'] = 0
                 conversation_state['is_are_you_there_response'] = False 
-
             # Log to database
             await log_conversation(
                 conversation_state['lead_id'],
@@ -1035,10 +1306,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     conversation_state['active_response'] = False
                 
                 # Create a response that will speak the disposition message
-                # await create_response_with_completion_instructions(
-                #     openai_ws,
-                #     f"Speak this exact message: '{disposition_message}' and then end the conversation."
-                # )
                 conversation_state['active_response'] = True
                 conversation_state['is_disposition_response'] = True
                 conversation_state['disposition_response_id'] = None  # Will be set when response.created is received
@@ -1075,6 +1342,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 print("[TIMEOUT] ❌ Timer cancelled - user started speaking")
                 conversation_state['waiting_for_user'] = False
                 conversation_state['timeout_task'] = None
+                conversation_state['expecting_user_response'] = False  # Reset flag
                 # Reset "Are you there?" counter when user starts speaking
                 if conversation_state['are_you_there_count'] > 0:
                     print(f"[TIMEOUT] User started speaking, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
@@ -1109,10 +1377,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 conversation_state['active_response'] = False
             else:
                 print("[LOG] No active response to cancel")
+                
         # Handle speech stopped
         elif event_type == 'input_audio_buffer.speech_stopped':
             print("[TIMEOUT] User stopped speaking")
             conversation_state['user_speaking'] = False
+            
         # Handle response cancelled
         elif event_type == 'response.cancelled':
             response_id = response.get('response', {}).get('id', '')
@@ -1209,38 +1479,42 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['total_audio_bytes'] = 0
                         conversation_state['audio_start_time'] = None
                         
-                        # Start timeout for user response (if not disposition)
-                        if not conversation_state.get('is_disposition_response', False):
+                        # Only start timeout for user response if we're expecting one
+                        if (not conversation_state.get('is_disposition_response', False) and
+                            not conversation_state.get('transfer_initiated', False) and  # Check if transfer is in progress
+                            conversation_state.get('expecting_user_response', False) and
+                            not conversation_state.get('pending_hangup', False) and
+                            not conversation_state.get('waiting_for_user', False) and
+                            not conversation_state.get('call_ending', False)):
+                            
                             # Check if this was an "Are you there?" response
                             if conversation_state.get('is_are_you_there_response', False):
                                 print("[TIMEOUT] 'Are you there?' audio completed, restarting timeout timer")
                                 conversation_state['is_are_you_there_response'] = False
                             
-                            # Start timeout timer
-                            if (not conversation_state.get('pending_hangup', False) and
-                                not conversation_state.get('waiting_for_user', False) and
-                                not conversation_state.get('call_ending', False)):
-                                print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
-                                conversation_state['waiting_for_user'] = True
-                                conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
-                                
-                                # Schedule the timeout handler
-                                async def timeout_wrapper():
-                                    try:
-                                        print("[TIMEOUT] ⏱️ Starting 5-second countdown...")
-                                        await conversation_state['timeout_task']
-                                        if conversation_state.get('waiting_for_user', False):
-                                            print("[TIMEOUT] ⏰ 5 seconds elapsed! Handling timeout...")
-                                            # Handle timeout
-                                            await handle_timeout()
-                                        else:
-                                            print("[TIMEOUT] ⏰ Timer completed but waiting_for_user=False")
-                                    except asyncio.CancelledError:
-                                        print("[TIMEOUT] ❌ Timer cancelled")
-                                    except Exception as e:
-                                        print(f"[TIMEOUT] ❌ Timer error: {e}")
-                                
-                                asyncio.create_task(timeout_wrapper())
+                            print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
+                            conversation_state['waiting_for_user'] = True
+                            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
+                            
+                            # Schedule the timeout handler
+                            async def timeout_wrapper():
+                                try:
+                                    print("[TIMEOUT] ⏱️ Starting 5-second countdown...")
+                                    await conversation_state['timeout_task']
+                                    if conversation_state.get('waiting_for_user', False):
+                                        print("[TIMEOUT] ⏰ 5 seconds elapsed! Handling timeout...")
+                                        # Handle timeout
+                                        await handle_timeout()
+                                    else:
+                                        print("[TIMEOUT] ⏰ Timer completed but waiting_for_user=False")
+                                except asyncio.CancelledError:
+                                    print("[TIMEOUT] ❌ Timer cancelled")
+                                except Exception as e:
+                                    print(f"[TIMEOUT] ❌ Timer error: {e}")
+                            
+                            asyncio.create_task(timeout_wrapper())
+                        else:
+                            print("[DEBUG] Not starting timeout timer - not expecting user response")
                     except Exception as e:
                         print(f"[ERROR] Error in audio completion handler: {e}")
                 
@@ -1250,8 +1524,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 if conversation_state.get('is_disposition_response', False):
                     print(f"[LOG] Disposition audio completed, scheduling hangup")
                     
-                    # Only schedule hangup if not already scheduled
-                    if not conversation_state.get('disposition_hangup_scheduled', False):
+                    # Only schedule hangup if not already scheduled and not a transfer
+                    if (not conversation_state.get('disposition_hangup_scheduled', False) and 
+                        conversation_state.get('disposition') != 1):  # Don't hangup for transfers
                         conversation_state['disposition_hangup_scheduled'] = True
                         
                         # Create a task to hang up the call after a longer delay
