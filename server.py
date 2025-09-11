@@ -43,10 +43,26 @@ SYSTEM_MESSAGE = (
     "Do not repeat the same response back-to-back. "
     "If the user says sorry then please repeat your last question. "
     "If the user says 'okay' or 'ok' then please ask next question. "
-    "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?' "
+    
+    "IDENTITY RULE: "
+    "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?'."
+    
+    "MISSING INFORMATION RULE: "
+    "You may already have some or all of the customer's details: "
+    "Name, Phone, Email, Origin City/State/Zip, Destination City/State/Zip, Move Date, Move Size. "
+    "If any detail is missing, politely ask the customer for it, ONE at a time, and wait for their response before moving to the next. "
+    "Ask in this order if missing: Name → Email → Phone → Origin → Destination → Move Date → Move Size. "
+    "Example fallback questions: "
+    "- If name missing: 'May I have your full name please?' "
+    "- If email missing: 'Could you share your email please?' "
+    "- If origin missing: 'What city and state are you moving from?' "
+    "- If destination missing: 'What city and state are you moving to?' "
+    "- If move date missing: 'What date are you planning your move?' "
+    "- If move size missing: 'What is the size of your move, for example a 1-bedroom or 3-bedroom home?' "
+    
+    "EXIT RULES: "
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
-    #"If the user asks about 'truck rental', 'van rental', or 'truck rent', respond with: 'We provide moving services, sorry to bother you. Have a great day.' "
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
@@ -285,8 +301,7 @@ def check_ai_disposition(transcript):
     transcript_lower = transcript.lower()
     moving_keywords = [
         "moving specialist", "moving agent", "moving company",
-        "moving service", "moving help", "moving assistance", "moving representative",
-        "transfer you to", "transfer a call", "transfer the call", "let me transfer"
+        "moving service", "moving help", "moving assistance", "moving representative"
     ]
     
     for keyword in moving_keywords:
@@ -458,7 +473,10 @@ async def home():
                 elif brand_id == 2:
                     audio = 'plivoai/interstates_inbound.mp3'
                     if lead_data and lead_data['type'] == "outbound":
-                        audio_message = f"HI, This is {ai_agent['agent_name'] if ai_agent else 'AI Agent'}. Am I speaking to {lead_data['name']}?"
+                        if lead_data.get('name'):
+                            audio_message = f"HI, This is {ai_agent['agent_name'] if ai_agent else 'AI Agent'}. Am I speaking to {lead_data['name']}?"
+                        else:
+                            audio_message = f"HI, This is {ai_agent['agent_name'] if ai_agent else 'AI Agent'}. I got your lead from our agency. Are you looking for a move from somewhere?"
                         audio = "plivoai/customer1.mp3"
                         
         except Exception as e:
@@ -586,7 +604,6 @@ async def handle_message():
         'disposition_hangup_scheduled': False,  # Flag to prevent multiple hangup attempts
         'expecting_user_response': False,  # NEW: Flag to indicate we're expecting a user response
         'transfer_initiated': False,  # NEW: Flag to prevent multiple transfer attempts
-        'transfer_pending': False,  # NEW: Flag to indicate transfer is pending after AI completes message
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -917,7 +934,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     print(f"[DEBUG] AI made a statement, not expecting immediate response")
                 
                 # NEW: Check AI speech for moving-related keywords
-                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False) and not conversation_state.get('transfer_pending', False):
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
                     disposition, disposition_message, followup_datetime = check_ai_disposition(text)
                     if disposition:
                         print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
@@ -926,11 +943,26 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
                         
-                        # MARK TRANSFER AS PENDING: Don't transfer immediately, let AI complete message
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
-                            print("[TRANSFER] Marking transfer as pending - will execute after AI completes message")
-                            conversation_state['transfer_pending'] = True  # Mark transfer as pending
-                            # Don't cancel response or execute transfer yet, let AI finish speaking
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
                         else:
                             # For other dispositions, mark that the call is ending
                             conversation_state['call_ending'] = True
@@ -969,7 +1001,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     print(f"[DEBUG] AI made a statement, not expecting immediate response")
                 
                 # NEW: Check AI speech for moving-related keywords
-                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False) and not conversation_state.get('transfer_pending', False):
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
                     disposition, disposition_message, followup_datetime = check_ai_disposition(conversation_state['current_ai_text'])
                     if disposition:
                         print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
@@ -978,11 +1010,26 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
                         
-                        # MARK TRANSFER AS PENDING: Don't transfer immediately, let AI complete message
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
-                            print("[TRANSFER] Marking transfer as pending - will execute after AI completes message")
-                            conversation_state['transfer_pending'] = True  # Mark transfer as pending
-                            # Don't cancel response or execute transfer yet, let AI finish speaking
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
                         else:
                             # For other dispositions, mark that the call is ending
                             conversation_state['call_ending'] = True
@@ -1047,7 +1094,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     print(f"[DEBUG] AI made a statement, not expecting immediate response")
                 
                 # NEW: Check AI speech for moving-related keywords
-                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False) and not conversation_state.get('transfer_pending', False):
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
                     disposition, disposition_message, followup_datetime = check_ai_disposition(transcript)
                     if disposition:
                         print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
@@ -1056,11 +1103,26 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
                         
-                        # MARK TRANSFER AS PENDING: Don't transfer immediately, let AI complete message
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
-                            print("[TRANSFER] Marking transfer as pending - will execute after AI completes message")
-                            conversation_state['transfer_pending'] = True  # Mark transfer as pending
-                            # Don't cancel response or execute transfer yet, let AI finish speaking
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
                         else:
                             # For other dispositions, mark that the call is ending
                             conversation_state['call_ending'] = True
@@ -1090,7 +1152,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     print(f"[DEBUG] AI made a statement, not expecting immediate response")
                 
                 # NEW: Check AI speech for moving-related keywords
-                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False) and not conversation_state.get('transfer_pending', False):
+                if not conversation_state.get('is_disposition_response', False) and not conversation_state.get('transfer_initiated', False):
                     disposition, disposition_message, followup_datetime = check_ai_disposition(conversation_state['ai_transcript'])
                     if disposition:
                         print(f"[LOG] AI triggered disposition {disposition}: {disposition_message}")
@@ -1099,11 +1161,26 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
                         
-                        # MARK TRANSFER AS PENDING: Don't transfer immediately, let AI complete message
+                        # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
-                            print("[TRANSFER] Marking transfer as pending - will execute after AI completes message")
-                            conversation_state['transfer_pending'] = True  # Mark transfer as pending
-                            # Don't cancel response or execute transfer yet, let AI finish speaking
+                            print("[TRANSFER] Immediately initiating call transfer")
+                            conversation_state['transfer_initiated'] = True  # Prevent multiple transfers
+                            
+                            # Cancel any active response
+                            if conversation_state['active_response']:
+                                cancel_response = {"type": "response.cancel"}
+                                await openai_ws.send(json.dumps(cancel_response))
+                                conversation_state['active_response'] = False
+                            
+                            # Immediately trigger the transfer
+                            await hangup_call(
+                                conversation_state['conversation_id'], 
+                                conversation_state['disposition'], 
+                                conversation_state['lead_id'],
+                                conversation_state.get('disposition_message', ''),
+                                followup_datetime=conversation_state.get('followup_datetime')
+                            )
+                            return  # Skip further processing
                         else:
                             # For other dispositions, mark that the call is ending
                             conversation_state['call_ending'] = True
@@ -1421,22 +1498,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['total_audio_bytes'] = 0
                         conversation_state['audio_start_time'] = None
                         
-                        # Check if there's a pending transfer that should execute now
-                        if conversation_state.get('transfer_pending', False):
-                            print("[TRANSFER] AI message completed, executing pending transfer now")
-                            conversation_state['transfer_pending'] = False
-                            conversation_state['transfer_initiated'] = True
-                            
-                            # Execute the transfer immediately after AI completes message
-                            await hangup_call(
-                                conversation_state['conversation_id'],
-                                conversation_state.get('disposition', 1),  # Default to transfer disposition
-                                conversation_state['lead_id'],
-                                conversation_state.get('disposition_message', 'call transfer'),
-                                followup_datetime=conversation_state.get('followup_datetime')
-                            )
-                            return
-                        
                         # Only start timeout for user response if we're expecting one
                         if (not conversation_state.get('is_disposition_response', False) and
                             not conversation_state.get('transfer_initiated', False) and  # Check if transfer is in progress
@@ -1482,26 +1543,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 if conversation_state.get('is_disposition_response', False):
                     print(f"[LOG] Disposition audio completed, scheduling hangup")
                     
-                    # Check if this is a pending transfer that should execute now
-                    if (conversation_state.get('transfer_pending', False) and 
-                        conversation_state.get('disposition') == 1):
-                        print("[TRANSFER] AI message completed, executing pending transfer now")
-                        conversation_state['transfer_pending'] = False
-                        conversation_state['transfer_initiated'] = True
-                        
-                        # Execute the transfer immediately after AI completes message
-                        await hangup_call(
-                            conversation_state['conversation_id'],
-                            conversation_state['disposition'],
-                            conversation_state['lead_id'],
-                            conversation_state.get('disposition_message', ''),
-                            followup_datetime=conversation_state.get('followup_datetime')
-                        )
-                        return
-                    
                     # Only schedule hangup if not already scheduled and not a transfer
-                    elif (not conversation_state.get('disposition_hangup_scheduled', False) and 
-                          conversation_state.get('disposition') != 1):  # Don't hangup for transfers
+                    if (not conversation_state.get('disposition_hangup_scheduled', False) and 
+                        conversation_state.get('disposition') != 1):  # Don't hangup for transfers
                         conversation_state['disposition_hangup_scheduled'] = True
                         
                         # Create a task to hang up the call after a longer delay
