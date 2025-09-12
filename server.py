@@ -1,5 +1,6 @@
 import plivo
 from quart import Quart, websocket, Response, request
+from fastapi import Query
 import asyncio
 import websockets
 import datetime
@@ -13,18 +14,23 @@ import os
 from urllib.parse import quote, urlencode
 from database import get_db_connection
 import concurrent.futures
-import datetime
 import aiohttp
 import re
 import html
 import time
+import openai
+
 load_dotenv(dotenv_path='.env', override=True)
+
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PLIVO_AUTH_ID = os.getenv('PLIVO_AUTH_ID')
 PLIVO_AUTH_TOKEN = os.getenv('PLIVO_AUTH_TOKEN')
+openai.api_key = OPENAI_API_KEY
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
+
 PORT = 5000
+
 # Updated SYSTEM_MESSAGE with clearer instructions
 SYSTEM_MESSAGE = (
     "CRITICAL RULE: After completing a FULL question, STOP speaking and WAIT for the user's response. "
@@ -48,17 +54,20 @@ SYSTEM_MESSAGE = (
     "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?'."
     
     "MISSING INFORMATION RULE: "
-    "You may already have some or all of the customer's details: "
-    "Name, Phone, Email, Origin City/State/Zip, Destination City/State/Zip, Move Date, Move Size. "
-    "If any detail is missing, politely ask the customer for it, ONE at a time, and wait for their response before moving to the next. "
-    "Ask in this order if missing: Name → Email → Phone → Origin → Destination → Move Date → Move Size. "
-    "Example fallback questions: "
-    "- If name missing: 'May I have your full name please?' "
-    "- If email missing: 'Could you share your email please?' "
-    "- If origin missing: 'What city and state are you moving from?' "
-    "- If destination missing: 'What city and state are you moving to?' "
-    "- If move date missing: 'What date are you planning your move?' "
-    "- If move size missing: 'What is the size of your move, for example a 1-bedroom or 3-bedroom home?' "
+    "You must always collect missing customer details, one at a time, in the following strict order: "
+    "Name → Email → Phone → Origin → Destination → Move Date → Move Size. "
+    "If you have no information about the customer, always start by asking their Name. "
+    "After receiving Name, ask for Email if missing, then Phone if missing, then Origin, then Destination, then Move Date, then Move Size. "
+    "Do NOT skip any of these fields if they are missing. "
+    "Always wait for the user to respond before moving to the next missing detail. "
+    "Example fallback questions for missing info: "
+    "- Name: 'May I have your full name please?' "
+    "- Email: 'Could you share your email please?' "
+    "- Origin: 'What city and state are you moving from?' "
+    "- Destination: 'What city and state are you moving to?' "
+    "- Move Date: 'What date are you planning your move?' "
+    "- Move Size: 'What is the size of your move, for example a 1-bedroom or 3-bedroom home?'"
+
     
     "EXIT RULES: "
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
@@ -69,6 +78,90 @@ SYSTEM_MESSAGE = (
 )
 
 app = Quart(__name__)
+
+
+# transcript and disposiation api
+
+def download_file(url, save_as="input.mp3"):
+    """Download MP3 from URL"""
+    response = requests.get(url, stream=True)
+    if response.status_code == 200:
+        with open(save_as, "wb") as f:
+            f.write(response.content)
+        return save_as
+    else:
+        raise Exception(f"Failed to download file: {response.status_code}")
+
+def transcribe(file_path):
+    """Transcribe audio using OpenAI Whisper"""
+    with open(file_path, "rb") as f:
+        transcript = openai.audio.transcriptions.create(
+            model="gpt-4o-transcribe",  # or "whisper-1"
+            file=f
+        )
+    return transcript.text
+
+def segment_speakers(transcript_text: str):
+    """Ask GPT to split transcript into Agent/Customer speakers"""
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",  # lightweight + fast
+        messages=[
+            {"role": "system", "content": "You are a call transcript formatter."},
+            {"role": "user", "content": f"""
+            Split this transcript into two speakers: Agent and Customer.
+            Keep the order of the conversation, and don't add extra text.
+            Transcript:
+            {transcript_text}
+            After splitting, analyze the conversation and return the final disposition in JSON.
+
+        Possible dispositions are:
+        - wrong number
+        - not interested
+        - voicemail
+        - followup (when customer says busy or call later)
+        - truck rental
+        - already booked
+        - goodbye
+        - live transfer
+
+        Output format (JSON only):
+        {{
+            "conversation": [
+                    {{ "speaker": "Agent", "text": "..." }},
+                    {{ "speaker": "Customer", "text": "..." }}
+                ],
+                "disposition": "<one_of_the_above>"
+        }}
+            """}
+        ],
+        response_format={"type": "json_object"}  # force valid JSON
+    )
+    return response.choices[0].message.content
+
+
+@app.get("/disposition_process")
+def disposition_process():
+    try:
+        # Get the mp3_url from query parameters
+        mp3_url = request.args.get('mp3_url')
+        
+        if not mp3_url:
+            return {"error": "mp3_url parameter is required"}, 400
+        
+        file_path = download_file(mp3_url)
+        text = transcribe(file_path)
+        result_json = segment_speakers(text)
+        
+        # Parse the JSON string to a Python dictionary
+        result_dict = json.loads(result_json)
+        
+        # Return the parsed dictionary (FastAPI will automatically convert to JSON)
+        return result_dict
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
 
 # Initialize database table
 def initialize_database():
@@ -131,6 +224,188 @@ async def log_conversation(lead_id, conversation_id, speaker, content):
             lead_id, conversation_id, speaker, content
         )
 
+# Function to update lead information after call
+async def update_lead_after_call(lead_id, call_uuid):
+    """
+    Update lead information after call ends using conversation transcript.
+    Only updates if any required fields are missing in the lead record.
+    """
+    try:
+        # 1. Check if lead exists and get current data
+        conn = get_db_connection()
+        if not conn:
+            print("[LEAD_UPDATE] Failed to get database connection")
+            return False
+            
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
+        lead = cursor.fetchone()
+        cursor.close()
+        
+        if not lead:
+            print(f"[LEAD_UPDATE] Lead {lead_id} not found")
+            conn.close()
+            return False
+            
+        # 2. Check for missing fields
+        required_fields = {
+            'name': lead['name'],
+            #'phone': lead['phone'],
+            'email': lead['email'],
+            'from_city': lead['from_city'],
+            'from_state': lead['from_state'],
+            'from_zip': lead['from_zip'],
+            'to_city': lead['to_city'],
+            'to_state': lead['to_state'],
+            'to_zip': lead['to_zip']
+        }
+        
+        missing_fields = {field: value for field, value in required_fields.items() if not value or value == ''}
+        
+        if not missing_fields:
+            print(f"[LEAD_UPDATE] Lead {lead_id} has all required fields, no update needed")
+            conn.close()
+            return True
+            
+        print(f"[LEAD_UPDATE] Lead {lead_id} has missing fields: {list(missing_fields.keys())}")
+        
+        # 3. Fetch conversation messages from database
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT speaker, content 
+            FROM conversation_messages 
+            WHERE conversation_id = %s 
+            ORDER BY timestamp ASC
+        """, (call_uuid,))
+        messages = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        if not messages:
+            print(f"[LEAD_UPDATE] No messages found for conversation {call_uuid}")
+            return False
+            
+        # 4. Combine messages into a single transcript
+        transcript = "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in messages])
+        print(f"[LEAD_UPDATE] Transcript length: {len(transcript)} characters")
+        
+        # 5. Prepare prompt for OpenAI - specify which fields to extract
+        prompt = f"""
+        You are an AI assistant that extracts customer contact info from phone call transcripts.
+        Return JSON with these fields: name, phone, email, origin_city, origin_state, origin, destination_city, destination_state, destination, move_date, move_size.
+        (move_date- formate dd-mm-yyyy), (move_size- only take number)
+        Leave missing values as null.
+
+        IMPORTANT: Focus on extracting these missing fields: {', '.join(missing_fields.keys())}
+
+        Transcript:
+        "{transcript}"
+        """
+        
+        # 6. Call OpenAI API
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": "gpt-4",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                },
+                timeout=60
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    print(f"[LEAD_UPDATE] OpenAI API error: {response.status} - {error_text}")
+                    return False
+                    
+                result = await response.json()
+                gpt_content = result["choices"][0]["message"]["content"]
+                print(f"[LEAD_UPDATE] OpenAI response: {gpt_content}")
+                
+                # 7. Parse JSON response
+                try:
+                    data = json.loads(gpt_content)
+                except json.JSONDecodeError as e:
+                    print(f"[LEAD_UPDATE] Failed to parse OpenAI response: {e}")
+                    return False
+                
+                # 8. Extract zip codes from origin and destination
+                origin = data.get('origin', '')
+                destination = data.get('destination', '')
+                from_zip = None
+                to_zip = None
+                
+                if origin:
+                    zip_match = re.search(r'\b\d{5}\b', origin)
+                    from_zip = zip_match.group(0) if zip_match else None
+                    
+                if destination:
+                    zip_match = re.search(r'\b\d{5}\b', destination)
+                    to_zip = zip_match.group(0) if zip_match else None
+                
+                # 9. Prepare update data - only update fields that were missing
+                update_data = {}
+                
+                if 'name' in missing_fields and data.get('name'):
+                    update_data['name'] = data['name']
+                if 'phone' in missing_fields and data.get('phone'):
+                    update_data['phone'] = data['phone']
+                if 'email' in missing_fields and data.get('email'):
+                    update_data['email'] = data['email']
+                if 'from_city' in missing_fields and data.get('origin_city'):
+                    update_data['from_city'] = data['origin_city']
+                if 'from_state' in missing_fields and data.get('origin_state'):
+                    update_data['from_state'] = data['origin_state']
+                if 'from_zip' in missing_fields and from_zip:
+                    update_data['from_zip'] = from_zip
+                if 'to_city' in missing_fields and data.get('destination_city'):
+                    update_data['to_city'] = data['destination_city']
+                if 'to_state' in missing_fields and data.get('destination_state'):
+                    update_data['to_state'] = data['destination_state']
+                if 'to_zip' in missing_fields and to_zip:
+                    update_data['to_zip'] = to_zip
+                if 'move_date' in missing_fields and data.get('move_date'):
+                    update_data['move_date'] = data['move_date']
+                if 'move_size' in missing_fields and data.get('move_size'):
+                    update_data['move_size'] = data['move_size']
+                
+                # 10. Update lead record only if we have new data
+                if not update_data:
+                    print(f"[LEAD_UPDATE] No new data extracted for missing fields")
+                    return False
+                
+                conn = get_db_connection()
+                if not conn:
+                    print("[LEAD_UPDATE] Failed to get database connection for update")
+                    return False
+                    
+                cursor = conn.cursor()
+                
+                # Build dynamic update query
+                set_clause = ", ".join([f"{field} = %s" for field in update_data.keys()])
+                values = list(update_data.values())
+                values.append(lead_id)
+                
+                update_query = f"UPDATE leads SET {set_clause} WHERE lead_id = %s"
+                cursor.execute(update_query, values)
+                
+                conn.commit()
+                cursor.close()
+                conn.close()
+                
+                print(f"[LEAD_UPDATE] Updated lead {lead_id} with fields: {list(update_data.keys())}")
+                return True
+                
+    except Exception as e:
+        print(f"[LEAD_UPDATE] Error: {e}")
+        return False
+
 # Function to hang up call using Plivo API
 async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text", followup_datetime=None):
     if not PLIVO_AUTH_ID or not PLIVO_AUTH_TOKEN:
@@ -186,6 +461,8 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             
             # Make the API call
             async with aiohttp.ClientSession() as session:
+                # ✅ Add 3-second delay before making API call
+                await asyncio.sleep(3)
                 async with session.post(
                     url,
                     headers={'Content-Type': 'application/json'},
@@ -280,15 +557,11 @@ def check_disposition(transcript, lead_timezone):
         # Default response for voicemail or no datetime found
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
     
-    # Pattern 5: Truck rental
-    #elif re.search(r"\b(truck rental|looking for truck rent|truck rent|van rental|van rent)\b", transcript_lower):
-    #    return 13, "We are providing moving services, sorry to bother you. Have a great day", None
-    
-    # Pattern 6: Already booked
+    # Pattern 5: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
         return 8, "No worries, sorry to bother you. Have a great day", None
     
-    # Pattern 7: Goodbye
+    # Pattern 6: Goodbye
     elif re.search(r"\b(bye|goodbye|good bye|take care|see you)\b", transcript_lower):
         return 6, "Nice to talk with you. Have a great day", None
     
@@ -300,8 +573,7 @@ def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
     moving_keywords = [
-        "moving specialist", "moving agent", "moving company",
-        "moving service", "moving help", "moving assistance", "moving representative"
+        "moving specialist", "moving agent", "moving company","moving assistance", "moving representative"
     ]
     
     for keyword in moving_keywords:
@@ -604,6 +876,7 @@ async def handle_message():
         'disposition_hangup_scheduled': False,  # Flag to prevent multiple hangup attempts
         'expecting_user_response': False,  # NEW: Flag to indicate we're expecting a user response
         'transfer_initiated': False,  # NEW: Flag to prevent multiple transfer attempts
+        'lead_update_scheduled': False,  # Flag to prevent multiple lead updates
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -670,6 +943,13 @@ async def handle_message():
                 # Set disposition for no response and prepare to hang up
                 conversation_state['disposition'] = 6  # Default disposition for no response
                 conversation_state['disposition_message'] = "Thank you for your time. Have a great day."
+                
+                # Schedule lead update if not already done
+                if not conversation_state.get('lead_update_scheduled', False) and conversation_state['lead_id'] and conversation_state['lead_id'] != 'unknown' and conversation_state['lead_id'] != 0:
+                    print(f"[LEAD_UPDATE] Scheduling lead update for lead_id {conversation_state['lead_id']} after call {conversation_state['conversation_id']}")
+                    asyncio.create_task(update_lead_after_call(conversation_state['lead_id'], conversation_state['conversation_id']))
+                    conversation_state['lead_update_scheduled'] = True
+                
                 # Create final goodbye message before hanging up
                 goodbye_response = {
                     "type": "response.create",
@@ -731,7 +1011,7 @@ async def handle_message():
             print(f"[TIMEOUT] Error handling timeout: {e}")
             # Ensure the timeout handling flag is reset even on error
             conversation_state['in_timeout_handling'] = False
-
+            
     def start_timeout_timer():
         """Start a 5-second timer for user response"""
         # Cancel existing timer if any
@@ -764,7 +1044,7 @@ async def handle_message():
             asyncio.create_task(timeout_wrapper())
         else:
             print(f"[TIMEOUT] ❌ Timer conditions not met - not starting timer")
-
+            
     def cancel_timeout_timer():
         """Cancel the timeout timer"""
         if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
@@ -775,7 +1055,7 @@ async def handle_message():
         conversation_state['waiting_for_user'] = False
         conversation_state['timeout_task'] = None
         conversation_state['expecting_user_response'] = False  # Reset flag
-
+        
     url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -943,6 +1223,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
                         
+                        # Schedule lead update if not already done
+                        if not conversation_state.get('lead_update_scheduled', False) and conversation_state['lead_id'] and conversation_state['lead_id'] != 'unknown' and conversation_state['lead_id'] != 0:
+                            print(f"[LEAD_UPDATE] Scheduling lead update for lead_id {conversation_state['lead_id']} after call {conversation_state['conversation_id']}")
+                            asyncio.create_task(update_lead_after_call(conversation_state['lead_id'], conversation_state['conversation_id']))
+                            conversation_state['lead_update_scheduled'] = True
+                        
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
                             print("[TRANSFER] Immediately initiating call transfer")
@@ -1009,6 +1295,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['disposition_message'] = disposition_message
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
+                        
+                        # Schedule lead update if not already done
+                        if not conversation_state.get('lead_update_scheduled', False) and conversation_state['lead_id'] and conversation_state['lead_id'] != 'unknown' and conversation_state['lead_id'] != 0:
+                            print(f"[LEAD_UPDATE] Scheduling lead update for lead_id {conversation_state['lead_id']} after call {conversation_state['conversation_id']}")
+                            asyncio.create_task(update_lead_after_call(conversation_state['lead_id'], conversation_state['conversation_id']))
+                            conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
@@ -1103,6 +1395,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
                         
+                        # Schedule lead update if not already done
+                        if not conversation_state.get('lead_update_scheduled', False) and conversation_state['lead_id'] and conversation_state['lead_id'] != 'unknown' and conversation_state['lead_id'] != 0:
+                            print(f"[LEAD_UPDATE] Scheduling lead update for lead_id {conversation_state['lead_id']} after call {conversation_state['conversation_id']}")
+                            asyncio.create_task(update_lead_after_call(conversation_state['lead_id'], conversation_state['conversation_id']))
+                            conversation_state['lead_update_scheduled'] = True
+                        
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
                             print("[TRANSFER] Immediately initiating call transfer")
@@ -1160,6 +1458,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['disposition_message'] = disposition_message
                         conversation_state['is_disposition_response'] = True
                         conversation_state['disposition_response_id'] = response.get('response_id', '')
+                        
+                        # Schedule lead update if not already done
+                        if not conversation_state.get('lead_update_scheduled', False) and conversation_state['lead_id'] and conversation_state['lead_id'] != 'unknown' and conversation_state['lead_id'] != 0:
+                            print(f"[LEAD_UPDATE] Scheduling lead update for lead_id {conversation_state['lead_id']} after call {conversation_state['conversation_id']}")
+                            asyncio.create_task(update_lead_after_call(conversation_state['lead_id'], conversation_state['conversation_id']))
+                            conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
                         if disposition == 1:
@@ -1314,6 +1618,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 
                 # Mark that the call is ending
                 conversation_state['call_ending'] = True
+                
+                # Schedule lead update if not already done
+                if not conversation_state.get('lead_update_scheduled', False) and conversation_state['lead_id'] and conversation_state['lead_id'] != 'unknown' and conversation_state['lead_id'] != 0:
+                    print(f"[LEAD_UPDATE] Scheduling lead update for lead_id {conversation_state['lead_id']} after call {conversation_state['conversation_id']}")
+                    asyncio.create_task(update_lead_after_call(conversation_state['lead_id'], conversation_state['conversation_id']))
+                    conversation_state['lead_update_scheduled'] = True
                 
                 # Cancel any active response
                 if conversation_state['active_response']:
