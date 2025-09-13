@@ -1579,6 +1579,11 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             if len(words) <= 2 and all(len(w) <= 3 for w in words):
                 print(f"[LOG] Ignored noise-like input: '{transcript}'")
                 return
+            # 4️⃣ only 1 or 2 words and ends with "."
+            normalized = transcript.strip().lower()
+            if len(words) <= 2 and normalized.endswith("."):
+                print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
+                return
             # 5️⃣ (Optional) Whisper confidence check, if available
             confidence = response.get("confidence", 1.0)  # fallback = 1.0
             if confidence < 0.85:
