@@ -877,6 +877,7 @@ async def handle_message():
         'expecting_user_response': False,  # NEW: Flag to indicate we're expecting a user response
         'transfer_initiated': False,  # NEW: Flag to prevent multiple transfer attempts
         'lead_update_scheduled': False,  # Flag to prevent multiple lead updates
+        'ignore_current_response': False,  # Track if we should ignore the current AI response
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -1495,6 +1496,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             response_id = response.get('response', {}).get('id', '')
             print(f"[LOG] Response created with ID: {response_id}")
             
+            # Check if we should ignore this response
+            if conversation_state.get('ignore_current_response', False):
+                print("[LOG] Cancelling response created for ignored input")
+                cancel_response = {"type": "response.cancel"}
+                await openai_ws.send(json.dumps(cancel_response))
+                conversation_state['active_response'] = False
+                conversation_state['ignore_current_response'] = False  # Reset flag
+                return
+        
             # If this is a disposition response, mark it
             if conversation_state.get('is_disposition_response', False):
                 print(f"[DEBUG] This is a disposition response, ID: {response_id}")
@@ -1508,6 +1518,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             print(f"[LOG] Response completed with ID: {response_id}")
             conversation_state['active_response'] = False
             
+            if conversation_state.get('ignore_current_response', False):
+                conversation_state['ignore_current_response'] = False
+                return
             # Check if this is a disposition response
             if conversation_state.get('is_disposition_response', False) and response_id == conversation_state.get('disposition_response_id', ''):
                 print(f"[DEBUG] Disposition response completed, waiting for audio to be played")
@@ -1559,10 +1572,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 return
                 
             transcript = response.get('transcript', '').strip()
-            # 1️⃣ Reject empty or very short transcripts
-            if not transcript or len(transcript) < 2:
-                print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
-                return
             # 2️⃣ Ignore watermark/noise artifacts
             if transcript.lower().startswith("subs by www.zeoranger.co.uk"):
                 print(f"[LOG] Ignored watermark/noise transcript: '{transcript}'")
@@ -1574,21 +1583,26 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             if transcript.lower() in false_positives:
                 print(f"[LOG] Ignored likely false positive: '{transcript}'")
                 return
-            # 4️⃣ Ignore very short noise-like inputs (1–2 short words)
-            words = transcript.split()
-            if len(words) <= 2 and all(len(w) <= 3 for w in words):
-                print(f"[LOG] Ignored noise-like input: '{transcript}'")
-                return
-            # 4️⃣ only 1 or 2 words and ends with "."
-            normalized = transcript.strip().lower()
-            if len(words) <= 2 and normalized.endswith("."):
-                print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
-                return
-            # 5️⃣ (Optional) Whisper confidence check, if available
-            confidence = response.get("confidence", 1.0)  # fallback = 1.0
-            if confidence < 0.85:
-                print(f"[LOG] Ignored low-confidence transcript ({confidence:.2f}): '{transcript}'")
-                return
+            # If we decide to ignore the transcript
+            if (not transcript or len(transcript) < 2 or
+                transcript.lower().startswith("subs by www.zeoranger.co.uk") or
+                transcript.lower() in false_positives or
+                (len(words) <= 2 and all(len(w) <= 3 for w in words)) or
+                (len(words) <= 2 and normalized.endswith(".")) or
+                confidence < 0.85):
+        
+                print(f"[LOG] Ignored transcript: '{transcript}'")
+        
+                # Set flag to ignore current response
+                conversation_state['ignore_current_response'] = True
+        
+                # Cancel any active response
+                if conversation_state.get('active_response', False):
+                    print("[LOG] Cancelling active response due to ignored input")
+                    cancel_response = {"type": "response.cancel"}
+                    await openai_ws.send(json.dumps(cancel_response))
+                    conversation_state['active_response'] = False
+        
             # ✅ Passed filters → treat as real user input
             print(f"[User] {transcript}")
             print(f"[LOG] User Input: {transcript}")
@@ -1723,6 +1737,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             conversation_state['active_response'] = False
             print("[LOG] Response cancelled")
             
+            if conversation_state.get('ignore_current_response', False):
+                conversation_state['ignore_current_response'] = False
+                return
             # If there's a pending language reminder, send it now
             if conversation_state.get('pending_language_reminder', False):
                 print("[LOG] Sending pending language reminder after cancellation")
