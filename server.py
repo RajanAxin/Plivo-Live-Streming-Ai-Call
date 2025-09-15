@@ -33,6 +33,29 @@ PORT = 5000
 
 # Updated SYSTEM_MESSAGE with clearer instructions
 SYSTEM_MESSAGE = (
+
+    "NOISE HANDLING RULES:"
+    "If you hear very short phrases like 'bye', 'thank you', 'ok', etc., IGNORE them as potential noise"
+    "Wait for the user to say something substantial (3+ words) before responding"
+    "If you're unsure whether it's noise or real speech, wait for additional input"
+    "Never respond to single words or very short phrases that could be background noise"
+
+
+    "MISSING INFORMATION RULE: "
+    "You must always collect missing customer details, one at a time, in the following strict order: "
+    "Name → Email → Phone → Origin → Destination → Move Date → Move Size. "
+    "If you have no information about the customer, always start by asking their Name. "
+    "After receiving Name, ask for Email if missing, then Phone if missing, then Origin, then Destination, then Move Date, then Move Size. "
+    "Do NOT skip any of these fields if they are missing. "
+    "Always wait for the user to respond before moving to the next missing detail. "
+    "Example fallback questions for missing info: "
+    "- Name: 'May I have your full name please?' "
+    "- Email: 'Could you share your email please?' "
+    "- Origin: 'What city and state are you moving from?' "
+    "- Destination: 'What city and state are you moving to?' "
+    "- Move Date: 'What date are you planning your move?' "
+    "- Move Size: 'What is the size of your move, for example a 1-bedroom or 3-bedroom home?'"
+
     "CRITICAL RULE: After completing a FULL question, STOP speaking and WAIT for the user's response. "
     "Always complete your sentences and thoughts before stopping. "
     "Do not stop in the middle of a sentence or phrase. "
@@ -51,23 +74,11 @@ SYSTEM_MESSAGE = (
     "If the user says 'okay' or 'ok' then please ask next question. "
     
     "IDENTITY RULE: "
-    "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?'."
+    "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?'. "
+    "When handling this case, you MUST completely IGNORE the MISSING INFORMATION RULE. "
+    "Do not ask for Name, Email, Phone, Origin, Destination, Move Date, or Move Size unless the user VOLUNTEERS them later. "
+    "After the apology and 'How are you?', continue the conversation naturally without collecting any information. "
     
-    "MISSING INFORMATION RULE: "
-    "You must always collect missing customer details, one at a time, in the following strict order: "
-    "Name → Email → Phone → Origin → Destination → Move Date → Move Size. "
-    "If you have no information about the customer, always start by asking their Name. "
-    "After receiving Name, ask for Email if missing, then Phone if missing, then Origin, then Destination, then Move Date, then Move Size. "
-    "Do NOT skip any of these fields if they are missing. "
-    "Always wait for the user to respond before moving to the next missing detail. "
-    "Example fallback questions for missing info: "
-    "- Name: 'May I have your full name please?' "
-    "- Email: 'Could you share your email please?' "
-    "- Origin: 'What city and state are you moving from?' "
-    "- Destination: 'What city and state are you moving to?' "
-    "- Move Date: 'What date are you planning your move?' "
-    "- Move Size: 'What is the size of your move, for example a 1-bedroom or 3-bedroom home?'"
-
     
     "EXIT RULES: "
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
@@ -78,6 +89,7 @@ SYSTEM_MESSAGE = (
 )
 
 app = Quart(__name__)
+
 
 
 # transcript and disposiation api
@@ -257,7 +269,9 @@ async def update_lead_after_call(lead_id, call_uuid):
             'from_zip': lead['from_zip'],
             'to_city': lead['to_city'],
             'to_state': lead['to_state'],
-            'to_zip': lead['to_zip']
+            'to_zip': lead['to_zip'],
+            'move_date': lead['move_date'],
+            'move_size': lead['move_size']
         }
         
         missing_fields = {field: value for field, value in required_fields.items() if not value or value == ''}
@@ -292,9 +306,21 @@ async def update_lead_after_call(lead_id, call_uuid):
         # 5. Prepare prompt for OpenAI - specify which fields to extract
         prompt = f"""
         You are an AI assistant that extracts customer contact info from phone call transcripts.
-        Return JSON with these fields: name, phone, email, origin_city, origin_state, origin, destination_city, destination_state, destination, move_date, move_size.
-        (move_date- formate dd-mm-yyyy), (move_size- only take number)
+        Return JSON with these fields: 
+        - name 
+        - phone 
+        - email 
+        - origin_city 
+        - origin_state 
+        - origin 
+        - destination_city 
+        - destination_state 
+        - destination 
+        - move_date (format strictly dd-mm-yyyy) 
+        - move_size (return only the numeric bedroom count, e.g., "1" for "one bedroom", "2" for "two-bedroom apartment"). 
+        If the size is not a bedroom description, leave move_size as null.  
         Leave missing values as null.
+
 
         IMPORTANT: Focus on extracting these missing fields: {', '.join(missing_fields.keys())}
 
@@ -1331,6 +1357,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             # Remove this item from tracking
             if item_id and item_id in conversation_state['response_items']:
                 del conversation_state['response_items'][item_id]
+         
                 
         # Handle AI audio transcript
         elif event_type == 'response.audio_transcript.delta':
@@ -1572,18 +1599,19 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
               "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you","Bye.", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening." 
             }
             if transcript.lower() in false_positives:
-                print(f"[LOG] Ignored likely false positive: '{transcript}'")
-                return
-            # 4️⃣ Ignore very short noise-like inputs (1–2 short words)
-            words = transcript.split()
-            if len(words) <= 2 and all(len(w) <= 3 for w in words):
-                print(f"[LOG] Ignored noise-like input: '{transcript}'")
-                return
-            # 4️⃣ only 1 or 2 words and ends with "."
-            normalized = transcript.strip().lower()
-            if len(words) <= 2 and normalized.endswith("."):
-                print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
-                return
+                print(f"[LOG] Accepted polite response: '{transcript}'")
+                # Don't return here - let it process normally
+            else:
+                # 4️⃣ Ignore very short noise-like inputs (1–2 short words) that aren't polite responses
+                words = transcript.split()
+                if len(words) <= 2 and all(len(w) <= 3 for w in words):
+                    print(f"[LOG] Ignored noise-like input: '{transcript}'")
+                    return
+                # 4️⃣ only 1 or 2 words and ends with "."
+                normalized = transcript.strip().lower()
+                if len(words) <= 2 and normalized.endswith("."):
+                    print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
+                    return
             # 5️⃣ (Optional) Whisper confidence check, if available
             confidence = response.get("confidence", 1.0)  # fallback = 1.0
             if confidence < 0.85:
