@@ -575,7 +575,7 @@ def check_disposition(transcript, lead_timezone):
         return 3, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 4: Not available
-    elif re.search(r"\b(not available|hang up or press|reached the maximum time allowed to make your recording|at the tone|record your message|voicemail|voice mail|leave your message|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
+    elif re.search(r"\b(not available|hang up or press|reached the maximum time allowed to make your recording|at the tone|record your message|voicemail|voice mail|leave your message|leave me a message|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
         # Check if it's a busy/call me later pattern that might have a datetime
         if re.search(r"\b(are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
             followup_datetime = get_followup_datetime(transcript_lower, lead_timezone)
