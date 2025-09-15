@@ -1,5 +1,5 @@
 # Plivo Audio Streaming Integration with OpenAI's Realtime API
-
+[User] No, I am sick right now.
 This project demonstrates integrating Plivo's audio streaming with OpenAI's Realtime Speech to Speech(S2S) model. The system is designed to act as a general Voice AI assistant that can take the raw audio as input, send the captured audio to the OpenAI's realtime model and then respond back in the form of raw audio which is then played by the plivo to the user.
 
 ## Features
