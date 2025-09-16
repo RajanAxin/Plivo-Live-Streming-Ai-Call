@@ -466,20 +466,20 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             
             # Prepare the payload
             payload = {
-                'id': lead_data['t_call_id'],
-                'action': 1,
-                'type': 1,
-                'review_call': 0,
-                'accept_call': 0,
-                'rep_id': lead_data['t_rep_id'],
-                'logic_check': 1,
-                'lead_id': lead_data['t_lead_id'],
-                'categoryId': 1,
-                'buffer_id_arr': '',
-                'campaignId': lead_data['campaign_id'],
-                'campaignScore': lead_data['campaign_score'],
-                'campaignNumber': lead_data['mover_phone'],
-                'campaignPayout': lead_data['campaign_payout']
+            'id': lead_data.get('t_call_id'),
+            'action': 1,
+            'type': 1,
+            'review_call': lead_data.get('review_call', 0) or 0,  # defaults to 0 if None or missing
+            'accept_call': 0,
+            'rep_id': lead_data.get('t_rep_id'),
+            'logic_check': 1,
+            'lead_id': lead_data.get('t_lead_id'),
+            'categoryId': 1,
+            'buffer_id_arr': '',
+            'campaignId': lead_data.get('campaign_id'),
+            'campaignScore': lead_data.get('campaign_score'),
+            'campaignNumber': lead_data.get('mover_phone'),
+            'campaignPayout': lead_data.get('campaign_payout')
             }
             
             # Determine URL based on phone number
