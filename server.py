@@ -56,6 +56,7 @@ SYSTEM_MESSAGE = (
     "- Move Size: 'What is the size of your move, for example a 1-bedroom or 3-bedroom home?'"
 
     "CRITICAL RULE: After completing a FULL question, STOP speaking and WAIT for the user's response. "
+    "As Ai-agent do not speak No response anytime",
     "Always complete your sentences and thoughts before stopping. "
     "Do not stop in the middle of a sentence or phrase. "
     "Always speak briefly (1-2 sentences). Ask one question, then wait for the user's response. "
@@ -83,7 +84,7 @@ SYSTEM_MESSAGE = (
     "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
-    "If the user says 'record your message','voicemail','voice mail','leave your message','please leave a name and number','leave me a message','leave me your','will get back to you' then respond only with: 'Hi I am calling from <name> Move regarding your recent moving request. Please call us back at 15308050957. Thank you.' and never say words like 'moving specialist','moving agent','moving company','moving assistance','moving representative'."
+    "If the user says 'record your message','voicemail','voice mail','leave your message','please leave a name and number','leave me a message','leave me your' then do not respond please not speak anything'. "
     "If the user says 'human', 'person', 'real person', respond with: 'I'll transfer you to a human agent who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
@@ -525,7 +526,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     print(f"[DEBUG] Auth header: {auth_header[:5]}...")
     
     if(disposition == 6):
-        await asyncio.sleep(3)
+        await asyncio.sleep(5)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.delete(
