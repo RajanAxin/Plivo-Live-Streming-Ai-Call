@@ -85,7 +85,7 @@ SYSTEM_MESSAGE = (
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
     "If the user says 'record your message','voicemail','voice mail','leave your message','please leave a name and number','leave me a message','leave me your' then do not respond please not speak anything'. "
-    "If the user says 'human', 'person', 'real person', respond with: 'I'll transfer you to a human agent who can better assist you.' "
+    "If the user says 'human', respond with: 'I'll transfer you to a human agent who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
     "CLOSING RULE: "
@@ -573,7 +573,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
     
     # Pattern 1: Do not call
 
-    if re.search(r"\b(human|person|real person)\b", transcript_lower):
+    if re.search(r"\b(human)\b", transcript_lower):
         return 9, "I'll transfer you to a human agent who can better assist you.", None
 
     elif re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
