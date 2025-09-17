@@ -258,7 +258,7 @@ async def update_lead_after_call(lead_id, call_uuid):
             print("[LEAD_UPDATE] Failed to get database connection")
             return False
             
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(dictionary=True, buffered=True)
         cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
         lead = cursor.fetchone()
         cursor.close()
@@ -293,7 +293,7 @@ async def update_lead_after_call(lead_id, call_uuid):
         print(f"[LEAD_UPDATE] Lead {lead_id} has missing fields: {list(missing_fields.keys())}")
         
         # 3. Fetch conversation messages from database
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(dictionary=True, buffered=True)
         cursor.execute("""
             SELECT speaker, content 
             FROM conversation_messages 
@@ -455,7 +455,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             # Fetch lead data from database
             conn = get_db_connection()
             if conn:
-                cursor = conn.cursor(dictionary=True)
+                cursor = conn.cursor(dictionary=True, buffered=True)
                 cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
                 lead_data = cursor.fetchone()
                 cursor.close()
@@ -558,7 +558,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
 
 def get_timezone_from_db(timezone_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)
     cursor.execute("SELECT timezone FROM mst_timezone WHERE timezone_id = %s LIMIT 1", (timezone_id,))
     row = cursor.fetchone()
     cursor.close()
@@ -746,7 +746,7 @@ async def home():
     conn = get_db_connection()
     if conn:
         try:
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor(dictionary=True, buffered=True)
             
             # Query lead data
             cursor.execute("""
@@ -767,23 +767,27 @@ async def home():
                 # Query brand voice
                 cursor.execute("SELECT * FROM brand_voice WHERE brand_id = %s", (brand_id,))
                 brand_voice = cursor.fetchone()
-                
-                cursor.execute("SELECT * FROM ai_agents WHERE brand_id = %s and agent_status = 'active'", (brand_id,))
+                print(brand_voice)
+                cursor.execute("SELECT id FROM ai_agents WHERE brand_id = %s and agent_status = 'active'", (brand_id,))
                 ai_agent = cursor.fetchone()
                 
                 if ai_agent:
                     ai_agent_id = ai_agent['id']  # Get the ai_agent_id
                     # Note: We're no longer fetching the prompt here
-                    
                 if brand_voice:
+                    print('aaaaa',brand_voice['voice_id'])
                     cursor.execute("SELECT * FROM mst_voiceid WHERE voice_id = %s", (brand_voice['voice_id'],))
                     voice = cursor.fetchone()
+                    print('aaaaa',brand_voice['voice_id'])
+                    print(brand_voice['voice_id'])
+                    print('not getting',voice)
                     if voice:
                         voice_name = voice['voice_name']
 
                 if brand_id:
                     cursor.execute("SELECT * FROM mst_brand WHERE brand_id = %s", (brand_id,))
                     mst_brand_data= cursor.fetchone()
+                    print(mst_brand_data)
                     if voice:
                         ai_agent_name = mst_brand_data['full_name']
                 
@@ -932,7 +936,7 @@ async def handle_message():
         conn = get_db_connection()
         if conn:
             try:
-                cursor = conn.cursor(dictionary=True)
+                cursor = conn.cursor(dictionary=True, buffered=True)
                 # Fetch the active prompt for this ai_agent
                 cursor.execute("SELECT * FROM ai_agent_prompts WHERE ai_agent_id = %s and is_active = 1", (ai_agent_id,))
                 ai_agent_prompt = cursor.fetchone()
