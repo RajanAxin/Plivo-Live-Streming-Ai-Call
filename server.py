@@ -84,6 +84,7 @@ SYSTEM_MESSAGE = (
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
     "If the user says 'record your message', 'voicemail', 'voice mail', 'leave your message', 'leave me a message', 'leave me your', 'will get back to you', respond with: 'Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957 Thank you.' "
+    "If the user says 'human', 'person', 'real person', respond with: 'I'll transfer you to a human agent who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
     "CLOSING RULE: "
@@ -446,7 +447,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
         return
     
     # Handle disposition 1 (call transfer) differently
-    if disposition == 1:
+    if disposition == 1 or disposition == 9:
         try:
             print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
             
@@ -471,7 +472,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             'id': lead_data.get('t_call_id'),
             'action': 1,
             'type': 1,
-            'review_call': lead_data.get('review_call', 0) or 0,  # defaults to 0 if None or missing
+            'review_call': 1 if disposition == 1 else 0,  # defaults to 0 if None or missing
             'accept_call': 0,
             'rep_id': lead_data.get('t_rep_id'),
             'logic_check': 1,
@@ -484,6 +485,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             'campaignPayout': lead_data.get('campaign_payout')
             }
             
+            print(f"[TRANSFER] Payload: {payload}")
             # Determine URL based on phone number
             if lead_data['phone'] == "6025298353":
                 url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
@@ -569,7 +571,11 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
     transcript_lower = transcript.lower()
     
     # Pattern 1: Do not call
-    if re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
+
+    if re.search(r"\b(human|person|real person)\b", transcript_lower):
+        return 9, "I'll transfer you to a human agent who can better assist you.", None
+
+    elif re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
         return 2, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 2: Wrong number
@@ -611,7 +617,7 @@ def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
     moving_keywords = [
-        "moving specialist", "moving agent", "moving company","moving assistance", "moving representative"
+        "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
     ]
     
     for keyword in moving_keywords:
@@ -1617,11 +1623,23 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             if not transcript or len(transcript) < 2:
                 print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
+                 # Send truncate message to remove this item from the conversation
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
                 return
             # 2️⃣ Ignore watermark/noise artifacts
             if transcript.lower().startswith("subs by www.zeoranger.co.uk"):
                 print(f"[LOG] Ignored watermark/noise transcript: '{transcript}'")
-                conversation_state['last_input_ignored'] = True
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
                 return
             # 3️⃣ Ignore known false positives
             false_positives = {
@@ -1630,24 +1648,49 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             if transcript.lower() in false_positives:
                 print(f"[LOG] Ignored false positive transcript: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
+                # Send truncate message to remove this item from the conversation
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
                 return
             # 4️⃣ Ignore very short noise-like inputs (1–2 short words) that aren't polite responses
             words = transcript.split()
             if len(words) <= 2 and all(len(w) <= 3 for w in words):
                 print(f"[LOG] Ignored noise-like input: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
                 return
             # 5️⃣ Only 1 or 2 words and ends with "."
             normalized = transcript.strip().lower()
             if len(words) <= 2 and normalized.endswith("."):
                 print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
                 conversation_state['last_input_ignored'] = True
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
                 return
             # 6️⃣ (Optional) Whisper confidence check, if available
             confidence = response.get("confidence", 1.0)  # fallback = 1.0
             if confidence < 0.85:
                 print(f"[LOG] Ignored low-confidence transcript ({confidence:.2f}): '{transcript}'")
                 conversation_state['last_input_ignored'] = True
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
                 return
             # ✅ Passed filters → treat as real user input
             print(f"[User] {transcript}")
@@ -1883,7 +1926,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['total_audio_bytes'] = 0
                         conversation_state['audio_start_time'] = None
                         
-                        # Only start timeout for user response if we're expecting one
+                        # Only start timeout for user response if we're not in a special state
+                        # (Removed the check for conversation_state.get('expecting_user_response', False))
                         if (not conversation_state.get('is_disposition_response', False) and
                             not conversation_state.get('transfer_initiated', False) and
                             not conversation_state.get('pending_hangup', False) and
@@ -1917,7 +1961,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             
                             asyncio.create_task(timeout_wrapper())
                         else:
-                            print("[DEBUG] Not starting timeout timer - not expecting user response")
+                            print("[DEBUG] Not starting timeout timer - in special state")
                     except Exception as e:
                         print(f"[ERROR] Error in audio completion handler: {e}")
                 
@@ -1975,6 +2019,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
 
+    
 if __name__ == "__main__":
     print('Starting server to handle inbound Plivo calls...')
     initialize_database()
