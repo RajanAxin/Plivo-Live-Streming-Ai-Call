@@ -779,8 +779,12 @@ async def home():
                     voice = cursor.fetchone()
                     if voice:
                         voice_name = voice['voice_name']
-                        if voice['voice_prompt_id']:
-                            voice_id = voice['voice_prompt_id']
+
+                if brand_id:
+                    cursor.execute("SELECT * FROM mst_brand WHERE brand_id = %s", (brand_id,))
+                    mst_brand_data= cursor.fetchone()
+                    if voice:
+                        ai_agent_name = mst_brand_data['full_name']
                 
                 # Audio selection logic
                 if brand_id == 1:
@@ -790,7 +794,6 @@ async def home():
                 elif brand_id == 2:
                     audio = 'plivoai/interstates_inbound.mp3'
                     if lead_data and lead_data['type'] == "outbound":
-                        ai_agent_name = ai_agent['agent_name']
                         if lead_data.get('name'):
                             audio_message = f"HI, This is {ai_agent_name}. Am I speaking to {lead_data['name']}?"
                         else:
@@ -1005,7 +1008,7 @@ async def handle_message():
                     "response": {
                         "modalities": ["text", "audio"],
                         "temperature": 0.6,  # Set to minimum allowed temperature
-                        "instructions": "Say exactly: 'Thank you for your time. Have a great day.' and then end the conversation."
+                        "instructions": "Say exactly: 'Thank you. Have a great day.' and then end the conversation."
                     }
                 }
                 await openai_ws.send(json.dumps(goodbye_response))
