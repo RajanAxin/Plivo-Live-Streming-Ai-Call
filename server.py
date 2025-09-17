@@ -746,7 +746,7 @@ async def home():
     conn = get_db_connection()
     if conn:
         try:
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor(dictionary=True, buffered=True)
             
             # Query lead data
             cursor.execute("""
