@@ -84,7 +84,7 @@ SYSTEM_MESSAGE = (
     "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
-    "If the user says 'record your message','voicemail','voice mail','leave your message','please leave a name and number','leave me a message','leave me your' then do not respond please not speak anything'. "
+    "If the user says 'please record your message', 'record your message','voicemail','voice mail','recording','leave your message','please leave a name and number','leave me a message','leave me your' then do not respond please not speak anything'. "
     "If the user says 'human', respond with: 'I'll transfer you to a human agent who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
@@ -599,7 +599,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         # Default response for voicemail or no datetime found
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
-    elif re.search(r"\b(record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|leave me your|will get back to you|leave me your)\b", transcript_lower):
+    elif re.search(r"\b(please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your)\b", transcript_lower):
         return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.", None
     
     # Pattern 5: Already booked
