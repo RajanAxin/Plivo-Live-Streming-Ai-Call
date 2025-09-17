@@ -473,7 +473,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             'id': lead_data.get('t_call_id'),
             'action': 1,
             'type': 1,
-            'review_call': 1 if disposition == 1 else 0,  # defaults to 0 if None or missing
+            'review_call': lead_data.get('review_call',0),  # defaults to 0 if None or missing
             'accept_call': 0,
             'rep_id': lead_data.get('t_rep_id'),
             'logic_check': 1,
