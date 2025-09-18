@@ -617,6 +617,12 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
 def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
+
+    # NEW: Check for voicemail keyword first (highest priority)
+    if "please call us back at 15308050957" in transcript_lower:
+        print(f"[AI DISPOSITION] Detected voicemail keyword in AI speech: {transcript}")
+        return 6, "I will call you later. Nice to talk with you. Have a great day.", None
+
     moving_keywords = [
         "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
     ]
