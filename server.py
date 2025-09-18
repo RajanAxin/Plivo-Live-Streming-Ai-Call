@@ -84,8 +84,8 @@ SYSTEM_MESSAGE = (
     "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
-    "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
-    "If the user says  'trying to reach is unavailable','call you back as soon as possible', 'automated voice messaging system', 'please record your message', 'record your message', 'voicemail', 'voice mail', 'leave your message', 'please leave the name and number', 'please leave a name and number', 'leave me a message', 'leave a message', 'recording', 'leave me your', 'will get back to you', 'leave me your', 'the person you are trying to reach is unavailable', 'please leave a message after the tone', 'your call is being forwarded', 'the subscriber you have dialed', 'is not available','has a voice mailbox', 'at the tone', 'after the tone' then do not respond please not speak anything'. "
+    "If the user says 'busy', 'call me later', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
+    "If the user says  'cannot accept any messages at this time','not available','trying to reach is unavailable','call you back as soon as possible', 'automated voice messaging system', 'please record your message', 'record your message', 'voicemail', 'voice mail', 'leave your message', 'please leave the name and number', 'please leave a name and number', 'leave me a message', 'leave a message', 'recording', 'leave me your', 'will get back to you', 'leave me your', 'the person you are trying to reach is unavailable', 'please leave a message after the tone', 'your call is being forwarded', 'the subscriber you have dialed', 'not available','has a voice mailbox', 'at the tone', 'after the tone' then do not respond please not speak anything'. "
     "If the user says 'human', respond with: 'I'll transfer you to a human agent who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
@@ -589,7 +589,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         return 3, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 4: Not available
-    elif re.search(r"\b(not available|hang up or press|reached the maximum time allowed to make your recording|at the tone|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
+    elif re.search(r"\b(hang up or press|reached the maximum time allowed to make your recording|at the tone|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
         # Check if it's a busy/call me later pattern that might have a datetime
         if re.search(r"\b(are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
             followup_datetime = get_followup_datetime(transcript_lower, lead_timezone)
@@ -600,7 +600,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         # Default response for voicemail or no datetime found
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
-    elif re.search(r"\b(trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|is not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
+    elif re.search(r"\b(Cannot accept any messages at this time|trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
         return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.", None
     
     # Pattern 5: Already booked
@@ -698,7 +698,12 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
     session_update = {
         "type": "session.update",
         "session": {
-            "turn_detection": {"type": "server_vad"},
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.7,  # Increase from default (0.5)
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 800  # Increase from default (500)
+                },
             "tools": [],
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
