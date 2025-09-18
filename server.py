@@ -1677,17 +1677,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 await openai_ws.send(json.dumps(truncate_message))
                 return
             # 4️⃣ Ignore very short noise-like inputs (1–2 short words) that aren't polite responses
-            words = transcript.split()
-            if len(words) <= 2 and all(len(w) <= 3 for w in words):
-                print(f"[LOG] Ignored noise-like input: '{transcript}'")
-                conversation_state['last_input_ignored'] = True
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
-                return
+            # words = transcript.split()
+            # if len(words) <= 2 and all(len(w) <= 3 for w in words):
+            #     print(f"[LOG] Ignored noise-like input: '{transcript}'")
+            #     conversation_state['last_input_ignored'] = True
+            #     truncate_message = {
+            #         "type": "conversation.item.truncate",
+            #         "item_id": response.get('item_id', ''),
+            #         "content_index": 0
+            #     }
+            #     await openai_ws.send(json.dumps(truncate_message))
+            #     return
             # 5️⃣ Only 1 or 2 words and ends with "."
             normalized = transcript.strip().lower()
             if len(words) <= 2 and normalized.endswith("."):
