@@ -34,6 +34,7 @@ PORT = 5000
 # Updated SYSTEM_MESSAGE with clearer instructions
 SYSTEM_MESSAGE = (
 
+    "When you detect recorded voice messages input, respond with: 'Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.' Keep your responses brief and professional."
     "NOISE HANDLING RULES:"
     "If you hear very short phrases like 'bye', 'thank you', 'ok', etc., IGNORE them as potential noise"
     "Wait for the user to say something substantial (3+ words) before responding"
@@ -1671,17 +1672,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 await openai_ws.send(json.dumps(truncate_message))
                 return
             # 5️⃣ Only 1 or 2 words and ends with "."
-            # normalized = transcript.strip().lower()
-            # if len(words) <= 2 and normalized.endswith("."):
-            #     print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
-            #     conversation_state['last_input_ignored'] = True
-            #     truncate_message = {
-            #         "type": "conversation.item.truncate",
-            #         "item_id": response.get('item_id', ''),
-            #         "content_index": 0
-            #     }
-            #     await openai_ws.send(json.dumps(truncate_message))
-            #     return
+            normalized = transcript.strip().lower()
+            if len(words) <= 2 and normalized.endswith("."):
+                print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
+                conversation_state['last_input_ignored'] = True
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
+                return
             # 6️⃣ (Optional) Whisper confidence check, if available
             confidence = response.get("confidence", 1.0)  # fallback = 1.0
             if confidence < 0.85:
