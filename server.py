@@ -526,7 +526,9 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     print(f"[DEBUG] Auth header: {auth_header[:5]}...")
     
     if(disposition == 6):
-        await asyncio.sleep(7)
+        print("[DEBUG] Disposition is 6, waiting for 7 seconds before hanging up")
+        await asyncio.sleep(8)
+        print("[DEBUG] Disposition is 6, waiting for 7 hold is over")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.delete(
