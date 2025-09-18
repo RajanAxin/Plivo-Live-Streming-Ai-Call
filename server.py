@@ -572,7 +572,9 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
     transcript_lower = transcript.lower()
     
     # Pattern 1: Do not call
-
+    if "Please call us back at 15308050957" in transcript_lower:
+        return 6, "thank you.", None
+    
     if re.search(r"\b(human)\b", transcript_lower):
         return 9, "I'll transfer you to a human agent who can better assist you.", None
 
@@ -617,10 +619,6 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
 def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
-    
-    if "Please call us back at 15308050957" in transcript_lower:
-        return 6, "thank you.", None
-    
     moving_keywords = [
         "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
     ]
