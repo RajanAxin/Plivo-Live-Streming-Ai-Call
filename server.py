@@ -488,7 +488,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             
             print(f"[TRANSFER] Payload: {payload}")
             # Determine URL based on phone number
-            if lead_data['phone'] == "6025298353":
+            if lead_data['phone'] in ("6025298353", "6263216095"):
                 url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
             else:
                 url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
