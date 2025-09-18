@@ -617,6 +617,10 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
 def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
+    
+    if "Please call us back at 15308050957" in transcript_lower:
+        return 6, "thank you.", None
+    
     moving_keywords = [
         "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
     ]
@@ -695,7 +699,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
     voice_mail_message = (
     "If you detect the user is leaving a voicemail or recorded message, "
     "ignore all other rules and ONLY respond with:\n\n"
-    f"'Hi I am calling from {{ai_agent_name}} Move regarding your recent moving request. "
+    f"'Hi I am calling from {ai_agent_name} Move regarding your recent moving request. "
     "Please call us back at 15308050957. Thank you.'\n\n"
     "Do not add anything else before or after."
 )
