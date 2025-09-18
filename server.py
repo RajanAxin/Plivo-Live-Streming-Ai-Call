@@ -84,7 +84,7 @@ SYSTEM_MESSAGE = (
     "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
     "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
     "If the user says 'busy', 'call me later', 'not available', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
-    "If the user says 'automated voice messaging system','please record your message', 'record your message','voicemail','voice mail','recording','leave your message','please leave a name and number','leave me a message','leave me your' then do not respond please not speak anything'. "
+    "If the user says  'trying to reach is unavailable','call you back as soon as possible', 'automated voice messaging system', 'please record your message', 'record your message', 'voicemail', 'voice mail', 'leave your message', 'please leave the name and number', 'please leave a name and number', 'leave me a message', 'leave a message', 'recording', 'leave me your', 'will get back to you', 'leave me your', 'the person you are trying to reach is unavailable', 'please leave a message after the tone', 'your call is being forwarded', 'the subscriber you have dialed', 'is not available','has a voice mailbox', 'at the tone', 'after the tone' then do not respond please not speak anything'. "
     "If the user says 'human', respond with: 'I'll transfer you to a human agent who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
@@ -599,7 +599,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         # Default response for voicemail or no datetime found
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
-    elif re.search(r"\b(automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your)\b", transcript_lower):
+    elif re.search(r"\b(trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|is not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
         return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.", None
     
     # Pattern 5: Already booked
@@ -1671,17 +1671,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 await openai_ws.send(json.dumps(truncate_message))
                 return
             # 5️⃣ Only 1 or 2 words and ends with "."
-            normalized = transcript.strip().lower()
-            if len(words) <= 2 and normalized.endswith("."):
-                print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
-                conversation_state['last_input_ignored'] = True
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
-                return
+            # normalized = transcript.strip().lower()
+            # if len(words) <= 2 and normalized.endswith("."):
+            #     print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
+            #     conversation_state['last_input_ignored'] = True
+            #     truncate_message = {
+            #         "type": "conversation.item.truncate",
+            #         "item_id": response.get('item_id', ''),
+            #         "content_index": 0
+            #     }
+            #     await openai_ws.send(json.dumps(truncate_message))
+            #     return
             # 6️⃣ (Optional) Whisper confidence check, if available
             confidence = response.get("confidence", 1.0)  # fallback = 1.0
             if confidence < 0.85:
