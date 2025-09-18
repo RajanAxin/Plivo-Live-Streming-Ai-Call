@@ -1306,7 +1306,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1:
+                        if disposition == 1 or disposition == 6:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1378,7 +1378,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1:
+                        if disposition == 1 or disposition == 6:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1477,7 +1477,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1:
+                        if disposition == 1 or disposition == 6:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1540,7 +1540,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1:
+                        if disposition == 1 or disposition == 6:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
