@@ -36,10 +36,10 @@ SYSTEM_MESSAGE = (
 
     "When you detect recorded voice messages input, respond with: 'Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.' Keep your responses brief and professional."
     "NOISE HANDLING RULES:"
-    "If you hear very short phrases like 'bye', 'thank you', 'ok', etc., IGNORE them as potential noise"
-    "Wait for the user to say something substantial (3+ words) before responding"
-    "If you're unsure whether it's noise or real speech, wait for additional input"
-    "Never respond to single words or very short phrases that could be background noise"
+    "If you detect any of these phrases, treat them as noise and DO NOT respond: 'bye', 'thank you', 'ok', 'alright', 'yes', 'no', 'sure', 'yeah'."
+    "Only respond to substantive input (3+ words) that clearly addresses the conversation topic."
+    "If you're unsure whether input is noise, wait for additional input before responding."
+    
 
     "MISSING INFORMATION RULE: "
     "You must always collect missing customer details, one at a time, in the following strict order: "
@@ -701,8 +701,8 @@ async def send_Session_update(openai_ws, prompt_text, voice_name):
             "turn_detection": {
                 "type": "server_vad",
                 "threshold": 0.7,  # Increase from default (0.5)
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 800  # Increase from default (500)
+                "prefix_padding_ms": 500,
+                "silence_duration_ms": 1000  # Increase from default (500)
                 },
             "tools": [],
             "input_audio_format": "g711_ulaw",
