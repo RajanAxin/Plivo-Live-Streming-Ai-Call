@@ -34,7 +34,6 @@ PORT = 5000
 # Updated SYSTEM_MESSAGE with clearer instructions
 SYSTEM_MESSAGE = (
 
-    "When you detect recorded voice messages input, respond with: 'Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.' Keep your responses brief and professional."
     "NOISE HANDLING RULES:"
     "If you detect any of these phrases, treat them as noise and DO NOT respond: 'bye', 'thank you', 'ok', 'alright', 'yes', 'no', 'sure', 'yeah'."
     "Only respond to substantive input (3+ words) that clearly addresses the conversation topic."
@@ -691,9 +690,22 @@ async def create_response_with_completion_instructions(openai_ws, instructions, 
     await openai_ws.send(json.dumps(response_create))
 
 # Updated send_Session_update function
-async def send_Session_update(openai_ws, prompt_text, voice_name):
+async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name):
     # Combine the system message with the custom prompt
-    full_prompt = f"{SYSTEM_MESSAGE}\n\n{prompt_text}\n\nIMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+    voice_mail_message = (
+    "If you detect the user is leaving a voicemail or recorded message, "
+    "ignore all other rules and ONLY respond with:\n\n"
+    f"'Hi I am calling from {{ai_agent_name}} Move regarding your recent moving request. "
+    "Please call us back at 15308050957. Thank you.'\n\n"
+    "Do not add anything else before or after."
+)
+
+    full_prompt = (
+                    f"{voice_mail_message}\n\n"
+                    f"{SYSTEM_MESSAGE}\n\n"
+                    f"{prompt_text}\n\n"
+                    "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+                )
     
     session_update = {
         "type": "session.update",
@@ -1124,7 +1136,7 @@ async def handle_message():
             print('Connected to the OpenAI Realtime API')
             
             # Send session update first
-            await send_Session_update(openai_ws, prompt_to_use, voice_name)
+            await send_Session_update(openai_ws, prompt_to_use, voice_name, ai_agent_name)
             await asyncio.sleep(0.5)
             
             # Send the specific audio_message as initial prompt using the new function
