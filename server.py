@@ -617,13 +617,6 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
 def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
-
-    # NEW: Check for voicemail keyword first (highest priority)
-    if "please call us back at 15308050957" in transcript_lower:
-        print(f"[AI DISPOSITION] Detected voicemail keyword in AI speech: {transcript}")
-        return 6, "I will call you later. Nice to talk with you. Have a great day.", None
-
-    # NEW: Check for moving-related keywords
     moving_keywords = [
         "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
     ]
@@ -682,15 +675,6 @@ def get_followup_datetime(user_speech, timezone_id: int):
     except Exception as e:
         logging.error(f"Followup datetime error: {e}")
         return None
-
-# Add this function to check for the specific keyword in AI speech
-def check_voicemail_keyword(transcript):
-    """Check if AI speech contains the voicemail keyword and return disposition if found"""
-    if "Please call us back at 15308050957" in transcript:
-        print("[VOICEMAIL_KEYWORD] Detected voicemail keyword in AI speech")
-        return 6, "I will call you later. Nice to talk with you. Have a great day.", None
-    return None, None, None
-
 
 # New function to create response with completion instructions
 async def create_response_with_completion_instructions(openai_ws, instructions, temperature=0.7):
