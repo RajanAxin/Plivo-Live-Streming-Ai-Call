@@ -600,9 +600,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
     elif re.search(r"\b(Cannot accept any messages at this time|trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
-        # Only trigger if our specific keyword is NOT present
-        if "Please call us back at 15308050957" not in transcript:
-            return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.", None
+        return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.", None
     
     # Pattern 5: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
@@ -619,6 +617,13 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
 def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
+
+    # NEW: Check for voicemail keyword first (highest priority)
+    if "please call us back at 15308050957" in transcript_lower:
+        print(f"[AI DISPOSITION] Detected voicemail keyword in AI speech: {transcript}")
+        return 6, "I will call you later. Nice to talk with you. Have a great day.", None
+
+    # NEW: Check for moving-related keywords
     moving_keywords = [
         "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
     ]
@@ -685,6 +690,7 @@ def check_voicemail_keyword(transcript):
         print("[VOICEMAIL_KEYWORD] Detected voicemail keyword in AI speech")
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
     return None, None, None
+
 
 # New function to create response with completion instructions
 async def create_response_with_completion_instructions(openai_ws, instructions, temperature=0.7):
@@ -1441,17 +1447,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 
             transcript = response.get('transcript', '')
             if transcript:
-                # Add to AI transcript
-                conversation_state['ai_transcript'] += transcript + ' '
-                
-                # Check for voicemail keyword
-                disposition, disposition_message, _ = check_voicemail_keyword(transcript)
-                if disposition:
-                    conversation_state['disposition'] = disposition
-                    conversation_state['disposition_message'] = disposition_message
-                    conversation_state['pending_hangup'] = True
-                    print(f"[VOICEMAIL_KEYWORD] Setting disposition {disposition} due to keyword detection")
-                
                 print(f"[LOG] AI Audio Transcript: {transcript}")
                 # Log to database
                 await log_conversation(
