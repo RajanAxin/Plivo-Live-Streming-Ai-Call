@@ -525,10 +525,8 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     print(f"[DEBUG] URL: {url}")
     print(f"[DEBUG] Auth header: {auth_header[:5]}...")
     
-    if(disposition == 6):
-        print("[DEBUG] Disposition is 9, waiting for 10 seconds before hanging up")
-        await asyncio.sleep(10)
-        print("[DEBUG] Disposition is 9, waiting for 10 hold is over")
+    if(disposition == 10):
+        await asyncio.sleep(12)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.delete(
@@ -547,7 +545,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     # 2️⃣ Build query params for Redirect
     params = {
         "lead_id": lead_id,
-        "disposition": disposition
+        "disposition": 6 if disposition == 10 else disposition
     }
     if followup_datetime:
         params["followupdatetime"] = followup_datetime
@@ -620,11 +618,11 @@ def check_ai_disposition(transcript):
     """Check if AI speech contains moving-related keywords and return disposition if found"""
     transcript_lower = transcript.lower()
 
-    # NEW: Check for voicemail keyword first (highest priority)
+    # NEW: Check for the specific voicemail keyword
     if "please call us back at 15308050957" in transcript_lower:
         print(f"[AI DISPOSITION] Detected voicemail keyword in AI speech: {transcript}")
-        return 6, "I will call you later. Nice to talk with you. Have a great day.", None
-
+        return 10, "I will call you later. Nice to talk with you. Have a great day.", None
+    
     moving_keywords = [
         "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
     ]
@@ -1308,7 +1306,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 6:
+                        if disposition == 1 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1380,7 +1378,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 6:
+                        if disposition == 1 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1479,7 +1477,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 6:
+                        if disposition == 1 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1542,7 +1540,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 6:
+                        if disposition == 1 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1685,17 +1683,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 await openai_ws.send(json.dumps(truncate_message))
                 return
             # 4️⃣ Ignore very short noise-like inputs (1–2 short words) that aren't polite responses
-            # words = transcript.split()
-            # if len(words) <= 2 and all(len(w) <= 3 for w in words):
-            #     print(f"[LOG] Ignored noise-like input: '{transcript}'")
-            #     conversation_state['last_input_ignored'] = True
-            #     truncate_message = {
-            #         "type": "conversation.item.truncate",
-            #         "item_id": response.get('item_id', ''),
-            #         "content_index": 0
-            #     }
-            #     await openai_ws.send(json.dumps(truncate_message))
-            #     return
+            words = transcript.split()
+            if len(words) <= 2 and all(len(w) <= 3 for w in words):
+                print(f"[LOG] Ignored noise-like input: '{transcript}'")
+                conversation_state['last_input_ignored'] = True
+                truncate_message = {
+                    "type": "conversation.item.truncate",
+                    "item_id": response.get('item_id', ''),
+                    "content_index": 0
+                }
+                await openai_ws.send(json.dumps(truncate_message))
+                return
             # 5️⃣ Only 1 or 2 words and ends with "."
             normalized = transcript.strip().lower()
             if len(words) <= 2 and normalized.endswith("."):
