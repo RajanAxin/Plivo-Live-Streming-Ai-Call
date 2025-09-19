@@ -1777,8 +1777,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     cancel_response = {
                         "type": "response.cancel"
                     }
-                    await openai_ws.send(json.dumps(cancel_response))
-                    conversation_state['active_response'] = False
+                    #await openai_ws.send(json.dumps(cancel_response))
+                    #conversation_state['active_response'] = False
                 disposition_message = '!'
                 # Create a response that will speak the disposition message
                 create_response = {
