@@ -1856,15 +1856,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             await plivo_ws.send(json.dumps(clear_audio_data))
             
             # Only cancel if there's an active response
-            if conversation_state.get('active_response', True):
-                print(f"Rajan9")
-                cancel_response = {
-                    "type": "response.cancel"
-                }
-                await openai_ws.send(json.dumps(cancel_response))
-                conversation_state['active_response'] = False
-            else:
-                print("[LOG] No active response to cancel")
+            # if conversation_state.get('active_response', True):
+            #     print(f"Rajan9")
+            #     cancel_response = {
+            #         "type": "response.cancel"
+            #     }
+            #     await openai_ws.send(json.dumps(cancel_response))
+            #     conversation_state['active_response'] = False
+            # else:
+            #     print("[LOG] No active response to cancel")
                 
         # Handle speech stopped
         elif event_type == 'input_audio_buffer.speech_stopped':
