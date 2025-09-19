@@ -88,11 +88,16 @@ SYSTEM_MESSAGE = (
     "If the user says 'human', respond with: 'I'll transfer you to a human agent who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
-    "CLOSING RULE: "
+   "CLOSING RULE: "
     "You must NEVER transfer the call immediately after greetings. "
     "After asking 'How are you?' and receiving the response, you must first confirm at least 2 moving details (such as Move Date, Origin, Destination, or Move Size). "
-    "Only after collecting at least 2 of these required details should you say exactly: 'Let me transfer your call to a moving specialist to discuss pricing options.' "
-    "Do not rephrase, do not add extra words, and do not ask it as a question."
+    "You must not combine multiple details into a single question. "
+    "Instead, confirm each detail individually using the information you already have. "
+    "Examples: 'I can see that you’re moving from Weslaco, TX to Visalia, CA, right?' "
+    "'Your move is scheduled for September 8th, 2025, right?' "
+    "'Your move size is 3, right?' "
+    "Only after confirming at least 2 of these required details should you say exactly: 'Let me transfer your call to a moving specialist to discuss pricing options.' "
+    "Do not rephrase, do not add extra words, and do not ask it as an open-ended question."
 
 
 )
@@ -723,7 +728,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
         "session": {
             "turn_detection": {
                 "type": "server_vad",
-                "threshold": 0.7,  # Increase from default (0.5)
+                "threshold": 0.8,  # Increase from default (0.5)
                 "prefix_padding_ms": 500,
                 "silence_duration_ms": 1000  # Increase from default (500)
                 },
@@ -860,7 +865,7 @@ async def home():
     xml_data = f'''<?xml version="1.0"?>
     <Response>
         <Stream streamTimeout="86400" keepCallAlive="true" bidirectional="true" 
-                contentType="audio/x-mulaw;rate=8000" audioTrack="inbound">
+                contentType="audio/x-mulaw;rate=8000" audioTrack="inbound" inputType="speech" speechModel="enhanced">
             {ws_url}
         </Stream>
     </Response>'''
@@ -1654,80 +1659,26 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             if conversation_state.get('call_ending', False) or conversation_state.get('transfer_initiated', False):
                 print("[LOG] Call is ending or transfer initiated, ignoring user input")
                 return
-                
+            false_positives = {
+              "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you","Bye.", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening.", "You"
+            }    
             transcript = response.get('transcript', '').strip()
-            # 1️⃣ Reject empty or very short transcripts
+            # Early noise filters
             if not transcript or len(transcript) < 2:
                 print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
-                 # Send truncate message to remove this item from the conversation
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
                 return
-            # 2️⃣ Ignore watermark/noise artifacts
-            if transcript.lower().startswith("subs by www.zeoranger.co.uk"):
-                print(f"[LOG] Ignored watermark/noise transcript: '{transcript}'")
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
-                return
-            # 3️⃣ Ignore known false positives
-            false_positives = {
-              "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you","Bye.", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening.", "You"
-            }
-            if transcript.lower() in false_positives:
-                print(f"[LOG] Ignored false positive transcript: '{transcript}'")
+            if transcript in false_positives:
+                print(f"[LOG] Ignored false positive: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
-                # Send truncate message to remove this item from the conversation
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
                 return
-            # 4️⃣ Ignore very short noise-like inputs (1–2 short words) that aren't polite responses
-            words = transcript.split()
-            if len(words) <= 2 and all(len(w) <= 3 for w in words):
-                print(f"[LOG] Ignored noise-like input: '{transcript}'")
+            if len(transcript.split()) <= 2 and transcript.endswith("."):
+                print(f"[LOG] Ignored noise-like short sentence: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
                 return
-            # 5️⃣ Only 1 or 2 words and ends with "."
-            normalized = transcript.strip().lower()
-            if len(words) <= 2 and normalized.endswith("."):
-                print(f"[LOG] Ignored noise-like short sentence ending with '.': '{transcript}'")
+            if response.get("confidence", 1.0) < 0.85:
+                print(f"[LOG] Ignored low-confidence transcript")
                 conversation_state['last_input_ignored'] = True
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
-                return
-            # 6️⃣ (Optional) Whisper confidence check, if available
-            confidence = response.get("confidence", 1.0)  # fallback = 1.0
-            if confidence < 0.85:
-                print(f"[LOG] Ignored low-confidence transcript ({confidence:.2f}): '{transcript}'")
-                conversation_state['last_input_ignored'] = True
-                truncate_message = {
-                    "type": "conversation.item.truncate",
-                    "item_id": response.get('item_id', ''),
-                    "content_index": 0
-                }
-                await openai_ws.send(json.dumps(truncate_message))
                 return
             # ✅ Passed filters → treat as real user input
             print(f"[User] {transcript}")
