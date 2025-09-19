@@ -1856,7 +1856,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             await plivo_ws.send(json.dumps(clear_audio_data))
             
             # Only cancel if there's an active response
-            if conversation_state['active_response']:
+            if conversation_state.get('active_response', False):
                 print(f"Rajan9")
                 cancel_response = {
                     "type": "response.cancel"
