@@ -1051,6 +1051,7 @@ async def handle_message():
                 cancel_response = {
                     "type": "response.cancel"
                 }
+                print(f"Rajan1")
                 await openai_ws.send(json.dumps(cancel_response))
                 conversation_state['active_response'] = False
                 # Small delay to ensure cancellation is processed
@@ -1319,6 +1320,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             # Cancel any active response
                             if conversation_state['active_response']:
                                 cancel_response = {"type": "response.cancel"}
+                                print(f"Rajan2")
                                 await openai_ws.send(json.dumps(cancel_response))
                                 conversation_state['active_response'] = False
                             
@@ -1391,6 +1393,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             # Cancel any active response
                             if conversation_state['active_response']:
                                 cancel_response = {"type": "response.cancel"}
+                                print(f"Rajan3")
                                 await openai_ws.send(json.dumps(cancel_response))
                                 conversation_state['active_response'] = False
                             
@@ -1490,6 +1493,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             # Cancel any active response
                             if conversation_state['active_response']:
                                 cancel_response = {"type": "response.cancel"}
+                                print(f"Rajan4")
                                 await openai_ws.send(json.dumps(cancel_response))
                                 conversation_state['active_response'] = False
                             
@@ -1553,6 +1557,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             # Cancel any active response
                             if conversation_state['active_response']:
                                 cancel_response = {"type": "response.cancel"}
+                                print(f"Rajan5")
                                 await openai_ws.send(json.dumps(cancel_response))
                                 conversation_state['active_response'] = False
                             
@@ -1579,6 +1584,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             if conversation_state.get('last_input_ignored', False):
                 print("[LOG] Cancelling response for ignored input")
                 cancel_response = {"type": "response.cancel"}
+                print(f"Rajan6")
                 await openai_ws.send(json.dumps(cancel_response))
                 conversation_state['active_response'] = False
                 conversation_state['last_input_ignored'] = False
@@ -1768,6 +1774,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 # Cancel any active response
                 if conversation_state['active_response']:
                     print("[LOG] Cancelling active response for disposition message")
+                    print(f"Rajan7")
                     cancel_response = {
                         "type": "response.cancel"
                     }
@@ -1798,6 +1805,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 # If there's an active response, cancel it and set a flag to send reminder later
                 if conversation_state['active_response']:
                     print("[LOG] Cancelling active response to send language reminder")
+                    print(f"Rajan8")
                     cancel_response = {
                         "type": "response.cancel"
                     }
@@ -1849,6 +1857,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
             # Only cancel if there's an active response
             if conversation_state['active_response']:
+                print(f"Rajan9")
                 cancel_response = {
                     "type": "response.cancel"
                 }
