@@ -606,7 +606,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
     elif re.search(r"\b(Cannot accept any messages at this time|trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
-        return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request.Please call us back at 15308050957. Thank you.", None
+        return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request Please call us back at 15308050957 Thank you.", None
     
     # Pattern 5: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
@@ -709,7 +709,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
     "ignore all other rules and ONLY respond with:\n\n"
     f"'Hi I am calling from {ai_agent_name} Move regarding your recent moving request. "
     "Please call us back at 15308050957. Thank you.'\n\n"
-    "Do not add anything else before or after."
+    "Do not add anything else before or after and stop speking whatever hapeen do not speak anything else."
 )
 
     full_prompt = (
