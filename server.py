@@ -958,7 +958,6 @@ async def handle_message():
         'expecting_user_response': False,  # NEW: Flag to indicate we're expecting a user response
         'transfer_initiated': False,  # NEW: Flag to prevent multiple transfer attempts
         'lead_update_scheduled': False,  # Flag to prevent multiple lead updates
-        'cancellation_attempted': False,  # Add this line
     }
     
     # Fetch prompt_text from database using ai_agent_id
@@ -1817,33 +1816,16 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
         elif event_type == 'input_audio_buffer.speech_started':
             print("[TIMEOUT] User started speaking, cancelling timeout")
             # Cancel timeout timer when user starts speaking
-            if conversation_state['timeout_task']:
+            if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
                 conversation_state['timeout_task'].cancel()
+                print("[TIMEOUT] ❌ Timer cancelled - user started speaking")
+                conversation_state['waiting_for_user'] = False
                 conversation_state['timeout_task'] = None
-
-            # Only cancel response if it's actually active
-            if conversation_state.get('active_response', False) and not conversation_state.get('cancellation_attempted', False):
-                conversation_state['cancellation_attempted'] = True
-                # Add a small delay to see if response completes naturally
-                await asyncio.sleep(0.2)  # 200ms delay
-                
-                # Check again if response is still active
-                if conversation_state.get('active_response', False):
-                    try:
-                        cancel_response = {"type": "response.cancel"}
-                        await openai_ws.send(json.dumps(cancel_response))
-                        print("[DEBUG] Sent response.cancel")
-                    except Exception as e:
-                        print(f"[ERROR] Failed to cancel response: {e}")
-    
-            # Reset conversation state
-            conversation_state['waiting_for_user'] = False
-            conversation_state['expecting_user_response'] = False
-            conversation_state['user_speaking'] = True
-
-            # Reset "Are you there?" counter when user starts speaking
-            if conversation_state['are_you_there_count'] > 0:
-                conversation_state['are_you_there_count'] = 0
+                conversation_state['expecting_user_response'] = False  # Reset flag
+                # Reset "Are you there?" counter when user starts speaking
+                if conversation_state['are_you_there_count'] > 0:
+                    print(f"[TIMEOUT] User started speaking, resetting 'Are you there?' counter from {conversation_state['are_you_there_count']} to 0")
+                    conversation_state['are_you_there_count'] = 0
             conversation_state['user_speaking'] = True
             if conversation_state['in_ai_response']:
                 print()  # Finish current AI response line
