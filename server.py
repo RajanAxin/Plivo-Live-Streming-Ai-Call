@@ -1772,14 +1772,14 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     conversation_state['lead_update_scheduled'] = True
                 
                 # Cancel any active response
-                if conversation_state['active_response']:
-                    print("[LOG] Cancelling active response for disposition message")
-                    print(f"Rajan7")
-                    cancel_response = {
-                        "type": "response.cancel"
-                    }
-                    await openai_ws.send(json.dumps(cancel_response))
-                    conversation_state['active_response'] = False
+                # if conversation_state['active_response']:
+                #     print("[LOG] Cancelling active response for disposition message")
+                #     print(f"Rajan7")
+                #     cancel_response = {
+                #         "type": "response.cancel"
+                #     }
+                #     await openai_ws.send(json.dumps(cancel_response))
+                #     conversation_state['active_response'] = False
                 disposition_message = '!'
                 # Create a response that will speak the disposition message
                 create_response = {
