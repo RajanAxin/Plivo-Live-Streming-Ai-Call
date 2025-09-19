@@ -707,7 +707,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
     voice_mail_message = (
     "If you detect the user is leaving a voicemail or recorded message, "
     "ignore all other rules and ONLY respond with:\n\n"
-    f"'Hi I am calling from {ai_agent_name} Move regarding your recent moving request Please call us back at 15308050957. Thank you"
+    f"'Hi I am calling from {ai_agent_name} Move regarding your recent moving request Please call us back at 15308050957 Thank you"
     "Do not add anything else before or after and stop speking whatever hapeen do not speak anything else."
 )
 
