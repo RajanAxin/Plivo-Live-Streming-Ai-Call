@@ -96,10 +96,10 @@ SYSTEM_MESSAGE = (
     "Examples: 'I can see that you’re moving from Weslaco, TX to Visalia, CA, right?' "
     "'Your move is scheduled for September 8th, 2025, right?' "
     "'Your move size is 3, right?' "
-    "Only after confirming at least 2 of these required details should you say exactly: 'Let me transfer your call to a moving specialist to discuss pricing options.' "
-    "Do not rephrase, do not add extra words, and do not ask it as an open-ended question."
-
-
+    "You must confirm at least 2 details before saying: "
+    "'Let me transfer your call to a moving specialist to discuss pricing options.' "
+    "Do not rephrase, do not add extra words, and do not ask open-ended questions. "
+    "If any detail is missing, skip it—never ask the customer to provide it."
 )
 
 app = Quart(__name__)
