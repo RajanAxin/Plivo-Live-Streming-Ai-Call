@@ -985,7 +985,17 @@ async def handle_message():
                             if lead_data:
                                 for key, value in lead_data.items():
                                     placeholder = f"[lead_{key}]"
-                                    prompt_text = prompt_text.replace(placeholder, str(value))
+                                    
+                                    # Special handling for move_size placeholder
+                                    if key == "move_size" and value:
+                                        cursor.execute("SELECT move_size FROM mst_move_size WHERE move_size_id = %s", (value,))
+                                        size_row = cursor.fetchone()
+                                        if size_row:
+                                            prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
+                                        else:
+                                            prompt_text = prompt_text.replace(placeholder, str(value))  # fallback
+                                    else:
+                                        prompt_text = prompt_text.replace(placeholder, str(value))
                         except (ValueError, TypeError):
                             print(f"Invalid lead_id: {lead_id}")
             except Exception as e:
@@ -1169,7 +1179,7 @@ async def handle_message():
             await create_response_with_completion_instructions(openai_ws, initial_prompt)
             conversation_state['active_response'] = True  # Mark that we have an active response
             
-            receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
+            receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws,conversation_state))
             
             async for message in openai_ws:
                 await receive_from_openai(message, plivo_ws, openai_ws, conversation_state, handle_timeout, ai_agent_name)
@@ -1183,12 +1193,17 @@ async def handle_message():
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
 
-async def receive_from_plivo(plivo_ws, openai_ws):
+async def receive_from_plivo(plivo_ws, openai_ws,conversation_state):
     try:
         while True:
             message = await plivo_ws.receive()
             data = json.loads(message)
             if data['event'] == 'media' and openai_ws.open:
+
+                 # 🔑 Prevent AI echo by skipping audio while AI is speaking
+                if conversation_state.get("in_ai_response", False):
+                    continue  # Ignore this audio frame
+
                 audio_append = {
                     "type": "input_audio_buffer.append",
                     "audio": data['media']['payload']
@@ -1660,7 +1675,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 print("[LOG] Call is ending or transfer initiated, ignoring user input")
                 return
             false_positives = {
-              "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you","Bye.", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening.", "You"
+              "yeah", "okay","I've been...", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you","Bye.", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening.", "You"
             }    
             transcript = response.get('transcript', '').strip()
             # Early noise filters
@@ -1672,10 +1687,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 print(f"[LOG] Ignored false positive: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
                 return
-            if len(transcript.split()) <= 2 and transcript.endswith("."):
-                print(f"[LOG] Ignored noise-like short sentence: '{transcript}'")
-                conversation_state['last_input_ignored'] = True
-                return
+            # if len(transcript.split()) <= 2 and transcript.endswith("."):
+            #     print(f"[LOG] Ignored noise-like short sentence: '{transcript}'")
+            #     conversation_state['last_input_ignored'] = True
+            #     return
             if response.get("confidence", 1.0) < 0.85:
                 print(f"[LOG] Ignored low-confidence transcript")
                 conversation_state['last_input_ignored'] = True
@@ -1772,6 +1787,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
         # Handle speech started (user interruption)
         elif event_type == 'input_audio_buffer.speech_started':
+
+            clear_audio_data = {
+                "event": "clearAudio",
+                "stream_id": plivo_ws.stream_id
+            }
+            await plivo_ws.send(json.dumps(clear_audio_data))
+            cancel_response = {
+                "type": "response.cancel"
+            }
+            await openai_ws.send(json.dumps(cancel_response))
+            
             print("[TIMEOUT] User started speaking, cancelling timeout")
             # Cancel timeout timer when user starts speaking
             if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
@@ -1819,6 +1845,13 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
         # Handle speech stopped
         elif event_type == 'input_audio_buffer.speech_stopped':
             print("[TIMEOUT] User stopped speaking")
+           # Only commit if we actually received audio
+            if conversation_state.get("audio_duration_ms", 0) > 100:
+                await openai_ws.send(json.dumps({ "type": "input_audio_buffer.commit" }))
+                await openai_ws.send(json.dumps({ "type": "input_audio_buffer.clear" }))
+            else:
+                print("[DEBUG] Skipping commit: not enough audio captured")
+                await openai_ws.send(json.dumps({ "type": "input_audio_buffer.clear" }))
             conversation_state['user_speaking'] = False
             
         # Handle response cancelled
