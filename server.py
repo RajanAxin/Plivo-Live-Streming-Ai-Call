@@ -534,10 +534,10 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
         print(f"[DEBUG] disposition 10 start-timer 1")
         await asyncio.sleep(12)
         print(f"[DEBUG] disposition 10 end-timer 12")
-    if(disposition == 6):
-        print(f"[DEBUG] disposition 6 start-timer 1")
+    if(disposition == 11):
+        print(f"[DEBUG] disposition 11 start-timer 1")
         await asyncio.sleep(8)
-        print(f"[DEBUG] disposition 6 end-timer 8")
+        print(f"[DEBUG] disposition 11 end-timer 8")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.delete(
@@ -556,7 +556,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     # 2️⃣ Build query params for Redirect
     params = {
         "lead_id": lead_id,
-        "disposition": 6 if disposition == 10 else disposition
+        "disposition": 6 if disposition in (10, 11) else disposition
     }
     if followup_datetime:
         params["followupdatetime"] = followup_datetime
@@ -611,7 +611,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
     elif re.search(r"\b(Cannot accept any messages at this time|trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
-        return 6, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request. Please call us back at 15308050957. Thank you.", None
+        return 11, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request. Please call us back at 15308050957. Thank you.", None
     
     # Pattern 5: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
@@ -1664,15 +1664,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             }    
             transcript = response.get('transcript', '').strip()
             # Early noise filters
-            if not transcript or len(transcript) < 2:
-                print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
-                conversation_state['last_input_ignored'] = True
-                return
+            # if not transcript or len(transcript) < 2:
+            #     print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
+            #     conversation_state['last_input_ignored'] = True
+            #     return
             if transcript in false_positives:
                 print(f"[LOG] Ignored false positive: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
                 return
-            if len(transcript.split()) <= 2 and transcript.endswith("."):
+            if len(transcript.split()) <= 1 and transcript.endswith("."):
                 print(f"[LOG] Ignored noise-like short sentence: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
                 return
@@ -1740,7 +1740,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         "instructions": f"Say exactly: '{disposition_message}'"
                     }
                 }
-                if(disposition==6):
+                if(disposition==11):
                     await openai_ws.send(json.dumps(create_response))
                 conversation_state['active_response'] = True
                 conversation_state['is_disposition_response'] = True
