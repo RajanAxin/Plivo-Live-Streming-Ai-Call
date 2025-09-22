@@ -86,6 +86,7 @@ SYSTEM_MESSAGE = (
     "If the user says 'busy', 'call me later', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
     "If the user says  'cannot accept any messages at this time','not available','trying to reach is unavailable','call you back as soon as possible', 'automated voice messaging system', 'please record your message', 'record your message', 'voicemail', 'voice mail', 'leave your message', 'please leave the name and number', 'please leave a name and number', 'leave me a message', 'leave a message', 'recording', 'leave me your', 'will get back to you', 'leave me your', 'the person you are trying to reach is unavailable', 'please leave a message after the tone', 'your call is being forwarded', 'the subscriber you have dialed', 'not available','has a voice mailbox', 'at the tone', 'after the tone' then do not respond please not speak anything'. "
     "If the user says 'human', respond with: 'I'll transfer you to a human agent who can better assist you.' "
+    "If the user says 'moving company', 'moving specialist', 'moving agent', 'moving company','moving assistance', 'moving representative' respond with: 'I'll transfer you to a moving company who can better assist you.' "
     "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
 
    "CLOSING RULE: "
@@ -584,7 +585,10 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
     
     # Pattern 1: Do not call
 
-    if re.search(r"\b(human)\b", transcript_lower):
+    if re.search(r"\b(moving specialist|moving agent|moving company|moving assistance|moving representative)\b", transcript_lower):
+        return 10, "I'll transfer you to a moving company who can better assist you.", None
+        
+    elif re.search(r"\b(human)\b", transcript_lower):
         return 9, "I'll transfer you to a human agent who can better assist you.", None
 
     elif re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
@@ -635,7 +639,7 @@ def check_ai_disposition(transcript):
         return 10, "I will call you later. Nice to talk with you. Have a great day.", None
     
     moving_keywords = [
-        "moving specialist", "moving agent", "moving company","moving assistance", "moving representative", "human"
+        "moving specialist", "moving agent", "moving company","moving assistance", "moving representative"
     ]
     
     for keyword in moving_keywords:
