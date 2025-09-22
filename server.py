@@ -1664,15 +1664,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             }    
             transcript = response.get('transcript', '').strip()
             # Early noise filters
-            # if not transcript or len(transcript) < 2:
-            #     print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
-            #     conversation_state['last_input_ignored'] = True
-            #     return
+            if not transcript or len(transcript) < 2:
+                print(f"[LOG] Ignored empty/short transcript: '{transcript}'")
+                conversation_state['last_input_ignored'] = True
+                return
             if transcript in false_positives:
                 print(f"[LOG] Ignored false positive: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
                 return
-            if len(transcript.split()) <= 1 and transcript.endswith("."):
+            if len(transcript.split()) <= 2 and transcript.endswith("."):
                 print(f"[LOG] Ignored noise-like short sentence: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
                 return
