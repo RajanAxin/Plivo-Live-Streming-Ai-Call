@@ -34,6 +34,7 @@ PORT = 5000
 # Updated SYSTEM_MESSAGE with clearer instructions
 SYSTEM_MESSAGE = (
 
+    "If the user asks or talks about anything regarding moving information, do not ask them for any details. Instead, describe the information you already have."
     "NOISE HANDLING RULES:"
     "If you detect any of these phrases, treat them as noise and DO NOT respond: 'bye', 'thank you', 'ok', 'alright', 'yes', 'no', 'sure', 'yeah'."
     "Only respond to substantive input (3+ words) that clearly addresses the conversation topic."
@@ -733,8 +734,8 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
             "turn_detection": {
                 "type": "server_vad",
                 "threshold": 0.8,  # Increase from default (0.5)
-                "prefix_padding_ms": 500,
-                "silence_duration_ms": 1000  # Increase from default (500)
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 1200  # Increase from default (500)
                 },
             "tools": [],
             "input_audio_format": "g711_ulaw",
@@ -1608,7 +1609,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 print("[LOG] Cancelling response for ignored input")
                 cancel_response = {"type": "response.cancel"}
                 print(f"Rajan6")
-                await openai_ws.send(json.dumps(cancel_response))
+                #await openai_ws.send(json.dumps(cancel_response))
                 conversation_state['active_response'] = False
                 conversation_state['last_input_ignored'] = False
                 return
@@ -1797,10 +1798,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 "stream_id": plivo_ws.stream_id
             }
             await plivo_ws.send(json.dumps(clear_audio_data))
-            cancel_response = {
-                "type": "response.cancel"
-            }
-            await openai_ws.send(json.dumps(cancel_response))
+            
             
             print("[TIMEOUT] User started speaking, cancelling timeout")
             # Cancel timeout timer when user starts speaking
