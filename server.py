@@ -771,6 +771,8 @@ async def home():
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
+    lead_id = request.args.get("lead_id")
+    lead_phone = request.args.get("lead_phone_number")
     
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
     
