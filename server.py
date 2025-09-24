@@ -1,3 +1,4 @@
+
 import plivo
 from quart import Quart, websocket, Response, request
 from fastapi import Query
@@ -761,6 +762,35 @@ def function_call_output(arg, item_id, call_id):
         }
     }
     return conversation_item
+
+
+@app.route("/amdresponsehandler", methods=["POST"])
+async def machine_detection_callback():
+    # Query string params from Laravel
+    lead_id = request.args.get("lead_id")
+    lead_phone = request.args.get("lead_phone_number")
+    user_id = request.args.get("user_id")
+
+    # POST form params from Plivo
+    form = await request.form
+    machine = form.get("Machine")  # "true" if voicemail detected
+    call_uuid = form.get("CallUUID")
+
+    print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
+
+    if machine and machine.lower() == "true":
+        print("Machine detected")
+        # Voicemail detected → play message and hang up
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Speak>Hello, this is your AI agent. Sorry we missed you. Please call us back at 15308050957.</Speak>
+            <Hangup/>
+        </Response>"""
+        return Response(xml, mimetype="text/xml")
+
+    # If human, continue normal call flow
+    return Response("<Response></Response>", mimetype="text/xml")
+    
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
