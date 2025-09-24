@@ -1,4 +1,3 @@
-
 import plivo
 from quart import Quart, websocket, Response, request
 from fastapi import Query
@@ -763,7 +762,6 @@ def function_call_output(arg, item_id, call_id):
     }
     return conversation_item
 
-
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
@@ -771,8 +769,6 @@ async def home():
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
-    lead_id = request.args.get("lead_id")
-    lead_phone = request.args.get("lead_phone_number")
     
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
     
@@ -912,7 +908,6 @@ async def test_disposition():
     return Response(content, status=200, mimetype="text/xml")
 
 @app.route("/test", methods=["GET", "POST"])
-
 async def test():
     # Query string params from Laravel
     lead_id = request.args.get("lead_id")
@@ -935,9 +930,6 @@ async def test():
             <Hangup/>
         </Response>"""
         return Response(xml, mimetype="text/xml")
-
-    # If human, continue normal call flow
-    return Response("<Response></Response>", mimetype="text/xml")
 
 @app.websocket('/media-stream')
 async def handle_message():
@@ -1261,6 +1253,44 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
         if event_type not in ['response.audio.delta', 'response.audio.done']:
             print(f"[DEBUG] Received event: {event_type}")
         
+
+        # SIMPLE: Just add AI activity events to the same timeout cancellation logic
+        # that you already have for user events
+        activity_events = [
+            # Existing user events (keep these as-is)
+            'input_audio_buffer.speech_started',
+            'conversation.item.input_audio_transcription.completed',
+            # NEW: Add AI events
+            'response.created',
+            'response.text.delta', 
+            'response.audio.delta',
+            'response.audio_transcript.delta'
+        ]
+        
+        if event_type in activity_events:
+            # Define source INSIDE the conditional where it's used
+            source = "AI" if event_type.startswith('response.') else "User"
+            # IMPORTANT: Don't reset timer if this is an "Are you there?" response
+            if event_type.startswith('response.') and conversation_state.get('is_are_you_there_response', False):
+                print(f"[TIMEOUT] NOT resetting timer - this is an 'Are you there?' response")
+                # Don't reset the timer for "Are you there?" responses
+                pass
+            else:
+                # Reset timer for normal AI responses and all user activity
+                if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
+                    conversation_state['timeout_task'].cancel()
+                    print(f"[TIMEOUT] Timer cancelled - {source} activity ({event_type})")
+                else:
+                    print(f"[TIMEOUT] Timer cancel requested - {source} activity ({event_type})")
+            conversation_state['waiting_for_user'] = False
+            conversation_state['timeout_task'] = None
+            conversation_state['expecting_user_response'] = False
+            
+            # Reset "Are you there?" counter for any activity
+            if source == "User" and conversation_state['are_you_there_count'] > 0:
+                print(f"[TIMEOUT] Resetting 'Are you there?' counter due to {source} activity")
+                conversation_state['are_you_there_count'] = 0
+
         # Handle AI text responses
         if event_type == 'response.text.delta':
             # If this is a disposition response, handle it specially
@@ -1290,6 +1320,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     conversation_state['response_items'][item_id] += delta
                 
         elif event_type == 'response.text.done':
+
+            # Check if this was an "Are you there?" response
+            text = response.get('text', '') or conversation_state['current_ai_text']
+            if text and "are you there" in text.lower():
+                print(f"[DEBUG] Detected 'Are you there?' response: {text}")
+                conversation_state['is_are_you_there_response'] = True
+            else:
+                conversation_state['is_are_you_there_response'] = False
+
             # If this is a disposition response, handle it specially
             if conversation_state.get('is_disposition_response', False):
                 text = response.get('text', '') or conversation_state.get('disposition_text', '')
@@ -1479,6 +1518,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             conversation_state['ai_transcript'] += delta
             
         elif event_type == 'response.audio_transcript.done':
+
+
+            # Check if this was an "Are you there?" response from audio transcript
+            transcript = response.get('transcript', '') or conversation_state['ai_transcript']
+            if transcript and "are you there" in transcript.lower():
+                print(f"[DEBUG] Detected 'Are you there?' audio transcript: {transcript}")
+                conversation_state['is_are_you_there_response'] = True
+            else:
+                conversation_state['is_are_you_there_response'] = False
+
+
             # If this is a disposition response, handle it specially
             if conversation_state.get('is_disposition_response', False):
                 transcript = response.get('transcript', '') or conversation_state.get('disposition_audio_transcript', '')
@@ -1649,6 +1699,11 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
         # Handle response completion
         elif event_type == 'response.done':
+
+             # Reset the "Are you there?" flag when response is completely done
+            if conversation_state.get('is_are_you_there_response', False):
+                print(f"[DEBUG] 'Are you there?' response completed")
+
             response_id = response.get('response', {}).get('id', '')
             print(f"[LOG] Response completed with ID: {response_id}")
             conversation_state['active_response'] = False
@@ -1819,13 +1874,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
         # Handle speech started (user interruption)
         elif event_type == 'input_audio_buffer.speech_started':
 
-            clear_audio_data = {
-                "event": "clearAudio",
-                "stream_id": plivo_ws.stream_id
-            }
-            await plivo_ws.send(json.dumps(clear_audio_data))
-            
-            
             print("[TIMEOUT] User started speaking, cancelling timeout")
             # Cancel timeout timer when user starts speaking
             if conversation_state['timeout_task'] and not conversation_state['timeout_task'].done():
@@ -1978,6 +2026,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                         conversation_state['total_audio_bytes'] = 0
                         conversation_state['audio_start_time'] = None
                         
+                         # Check if this was an "Are you there?" response
+                        was_are_you_there = conversation_state.get('is_are_you_there_response', False)
+                        
+                        # Reset the flag now that audio is done
+                        conversation_state['is_are_you_there_response'] = False
+
                         # Only start timeout for user response if we're not in a special state
                         # (Removed the check for conversation_state.get('expecting_user_response', False))
                         if (not conversation_state.get('is_disposition_response', False) and
@@ -1987,9 +2041,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             not conversation_state.get('call_ending', False)):
                             
                             # Check if this was an "Are you there?" response
-                            if conversation_state.get('is_are_you_there_response', False):
-                                print("[TIMEOUT] 'Are you there?' audio completed, restarting timeout timer")
-                                conversation_state['is_are_you_there_response'] = False
+                            if was_are_you_there:
+                                print("[TIMEOUT] 'Are you there?' completed - restarting timeout timer")
+                            else:
+                                print("[TIMEOUT] Normal AI response completed - starting timeout timer")
                             
                             print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
                             conversation_state['waiting_for_user'] = True
