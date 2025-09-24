@@ -764,6 +764,19 @@ def function_call_output(arg, item_id, call_id):
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
+
+    # This is an AMD callback
+    machine_detected = (await request.form).get('Machine')
+    print(f"Machine detected: {machine_detected}")
+    if machine_detected and machine_detected.lower() == 'true':
+         # Machine detected - return voicemail
+         xml = """<?xml version="1.0" encoding="UTF-8"?>
+             <Response>
+                 <Speak>Hello, this is Topvanline Move. Please call us back at 1-530-805-0957. Thank you.</Speak>
+                 <Hangup/>
+             </Response>"""
+         return Response(xml, mimetype="text/xml")
+
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
@@ -772,6 +785,7 @@ async def home():
     
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
     
+
     # Default values
     brand_id = 1
     voice_name = 'alloy'
