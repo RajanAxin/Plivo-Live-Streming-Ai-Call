@@ -764,34 +764,6 @@ def function_call_output(arg, item_id, call_id):
     return conversation_item
 
 
-@app.route("/amdresponsehandler", methods=["POST"])
-async def machine_detection_callback():
-    # Query string params from Laravel
-    lead_id = request.args.get("lead_id")
-    lead_phone = request.args.get("lead_phone_number")
-    user_id = request.args.get("user_id")
-
-    # POST form params from Plivo
-    form = await request.form
-    machine = form.get("Machine")  # "true" if voicemail detected
-    call_uuid = form.get("CallUUID")
-
-    print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
-
-    if machine and machine.lower() == "true":
-        print("Machine detected")
-        # Voicemail detected → play message and hang up
-        xml = """<?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-            <Speak>Hello, this is your AI agent. Sorry we missed you. Please call us back at 15308050957.</Speak>
-            <Hangup/>
-        </Response>"""
-        return Response(xml, mimetype="text/xml")
-
-    # If human, continue normal call flow
-    return Response("<Response></Response>", mimetype="text/xml")
-    
-
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
@@ -938,10 +910,32 @@ async def test_disposition():
     return Response(content, status=200, mimetype="text/xml")
 
 @app.route("/test", methods=["GET", "POST"])
+
 async def test():
-    print("Test endpoint hit!")
-    print("Form data:", await request.form)
-    return Response("Test successful", mimetype='text/plain')
+    # Query string params from Laravel
+    lead_id = request.args.get("lead_id")
+    lead_phone = request.args.get("lead_phone_number")
+    user_id = request.args.get("user_id")
+
+    # POST form params from Plivo
+    form = await request.form
+    machine = form.get("Machine")  # "true" if voicemail detected
+    call_uuid = form.get("CallUUID")
+
+    print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
+
+    if machine and machine.lower() == "true":
+        print("Machine detected")
+        # Voicemail detected → play message and hang up
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Speak>Hello, this is your AI agent. Sorry we missed you. Please call us back at 15308050957.</Speak>
+            <Hangup/>
+        </Response>"""
+        return Response(xml, mimetype="text/xml")
+
+    # If human, continue normal call flow
+    return Response("<Response></Response>", mimetype="text/xml")
 
 @app.websocket('/media-stream')
 async def handle_message():
