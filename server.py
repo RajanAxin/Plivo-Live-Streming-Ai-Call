@@ -908,18 +908,14 @@ async def test_disposition():
 
 @app.route("/test", methods=["GET", "POST"])
 async def test():
+    data = await request.form
     # Query string params from Laravel
-    lead_id = request.args.get("lead_id")
-    lead_phone = request.args.get("lead_phone_number")
-    user_id = request.args.get("user_id")
-    lead_call_id = request.args.get("lead_call_id")
-    call_uuid = request.args.get("call_uuid")
+    call_uuid = data.get("CallUUID")
 
     # POST form params from Plivo
-    form = await request.form
-    machine = form.get("Machine")  # "true" if voicemail detected
+    machine = data.get("Machine")  # "true" if voicemail detected
 
-    print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
+    print(f"[AMD] Machine={machine}, CallUUID={call_uuid}")
 
     if machine and machine.lower() == 'true':
         print(f"Machine Detected")
