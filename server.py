@@ -769,6 +769,7 @@ async def home():
     machine_detected = (await request.form).get('Machine')
     print(f"Machine detected: {machine_detected}")
     if machine_detected and machine_detected.lower() == 'true':
+         print(f"Machine check inside detected: {machine_detected}")
          # Machine detected - return voicemail
          xml = """<?xml version="1.0" encoding="UTF-8"?>
              <Response>
