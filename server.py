@@ -143,15 +143,22 @@ def segment_speakers(transcript_text: str):
             After splitting, analyze the conversation and return the final disposition in JSON.
 
         Possible dispositions are:
-        - wrong number
-        - not interested
-        - voicemail
-        - followup (when customer says busy or call later)
-        - truck rental
-        - already booked
-        - goodbye
-        - live transfer
-
+        - Live Transfer
+        - DNC
+        - Not Interested
+        - Voicemail
+        - Follow Up
+        - No Buyer
+        - Voice Message
+        - Wrong Phone
+        - Booked
+        - Booked with Us
+        - Booked with PODs
+        - Booked with Truck Rental
+        - Truck Rental
+        - IB Pickup
+        - No Answer
+        - Business Relay
         Output format (JSON only):
         {{
             "conversation": [
