@@ -1,5 +1,5 @@
 import plivo
-from quart import Quart, websocket, Response, request
+from quart import Quart, websocket, Response, request, session
 from fastapi import Query
 import asyncio
 import websockets
@@ -105,6 +105,7 @@ SYSTEM_MESSAGE = (
 )
 
 app = Quart(__name__)
+app.secret_key = "ABCDEFGHIJKLMNOPQRST"
 
 
 # transcript and disposiation api
@@ -770,6 +771,7 @@ async def home():
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
     
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
+    session["call_uuid"] = call_uuid
 
     # Default values
     brand_id = 1
@@ -908,18 +910,23 @@ async def test_disposition():
 
 @app.route("/test", methods=["POST"])
 async def test():
+    # Get form data (POST params)
     data = await request.form
-    # Query string params from Laravel
-    call_uuid = data.get("CallUUID")
+    machine = data.get("Machine")
+    
+    # Get query string params (GET params)
+    lead_id = request.args.get("lead_id")
+    lead_phone = request.args.get("lead_phone_number")
+    user_id = request.args.get("user_id")
+    lead_call_id = request.args.get("lead_call_id")
+    call_uuid = request.args.get("call_uuid")
 
-    # POST form params from Plivo
-    machine = data.get("Machine")  # "true" if voicemail detected
-
-    print(f"[AMD] Machine={machine}, CallUUID={call_uuid}")
+    print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
 
     if machine and machine.lower() == 'true':
-        print(f"Machine Detected")
-        url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"  # Fixed indentation
+        # Plivo hangup logic
+        print(f"Machine Detected - Hanging up call")
+        url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
         auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
         auth_header = base64.b64encode(auth_string.encode()).decode()
         try:
@@ -937,8 +944,78 @@ async def test():
         except Exception as e:
             print(f"Error hanging up call: {e}")
     else:
-        print(f"Not Detected")
+        # Your PHP conversion logic - call transfer API
+        print(f"Not Detected - Processing call transfer")
+        
+        if lead_id and lead_call_id and user_id:
+            # Get lead data from database using your style
+            conn = get_db_connection()
+            if conn:
+                try:
+                    cursor = conn.cursor(dictionary=True, buffered=True)
+                    cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
+                    lead_data = cursor.fetchone()
+                    print(f"Lead data: {lead_data}")
+                    
+                except Exception as e:
+                    print(f"Database error: {e}")
+                    lead_data = None
+                finally:
+                    cursor.close()
+                    conn.close()
+            else:
+                print("Failed to get database connection")
+                lead_data = None
 
+            # Prepare the API payload
+            para = json.dumps({
+                'id': lead_call_id,
+                'action': 6,
+                'type': 1,
+                'call': '1',
+                'follow_up_date_time': '',
+                'follow_up_time': '',
+                'campaign_id': 0,
+                'campaign_score': 0,
+                'transfer_number': 0,
+                'payout': 0,
+                'lead_id': lead_id,
+                'logic_check': 0,
+                'review_call': 0,
+                'booking_call': 0,
+                'booking_recall': 0,
+                'accept_call': 0,
+                'rep_id': user_id,
+                'lead_category': 1,
+                'buffer_id_arr': '',
+                'timezone_id': lead_data['timezone_id'] if lead_data else None
+            })
+            
+            # Determine which URL to use based on phone number
+            if lead_data and lead_data.get('phone') == "6025298353":
+                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+            else:
+                url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+            
+            # Make the API call
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        url,
+                        headers={'Content-Type': 'application/json'},
+                        data=para,
+                        timeout=aiohttp.ClientTimeout(total=30)
+                    ) as response:
+                        response_text = await response.text()
+                        print(f"callit log curl_api_call URL: {url} === res: {response_text}")
+                        
+            except Exception as e:
+                print(f"Error making API call: {e}")
+        else:
+            print("Missing required parameters for call transfer")
+
+    return "OK"
+    
 
 @app.websocket('/media-stream')
 async def handle_message():
