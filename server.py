@@ -919,10 +919,10 @@ async def test():
 
     if machine and machine.lower() == 'true':
         print(f"Machine Detected")
-         url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
-         auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
-         auth_header = base64.b64encode(auth_string.encode()).decode()
-         try:
+        url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"  # Fixed indentation
+        auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
+        auth_header = base64.b64encode(auth_string.encode()).decode()
+        try:
             async with aiohttp.ClientSession() as session:
                 async with session.delete(
                     url,
@@ -934,7 +934,7 @@ async def test():
                     else:
                         response_text = await resp.text()
                         print(f"Failed to hang up call {call_uuid}: {resp.status} {response_text}")
-         except Exception as e:
+        except Exception as e:
             print(f"Error hanging up call: {e}")
     else:
         print(f"Not Detected")
