@@ -939,7 +939,13 @@ async def test():
                         print(f"Failed to hang up call {call_uuid}: {resp.status} {response_text}")
          except Exception as e:
             print(f"Error hanging up call: {e}")
-    
+    # Additional test success case - verify all required parameters exist
+    required_params = [lead_id, lead_phone, user_id, call_uuid, machine]
+    if all(required_params):
+        print("[TEST SUCCESS] All required parameters are present and non-empty")
+    else:
+        print("[TEST WARNING] Some required parameters are missing or empty")
+
 
 @app.websocket('/media-stream')
 async def handle_message():
