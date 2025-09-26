@@ -926,27 +926,6 @@ async def test():
     if machine and machine.lower() == 'true':
         # Plivo hangup logic
         print(f"Machine Detected - Hanging up call")
-        url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
-        auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
-        auth_header = base64.b64encode(auth_string.encode()).decode()
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.delete(
-                    url,
-                    headers={"Authorization": f"Basic {auth_header}"}
-                ) as resp:
-                    print(f"[DEBUG] Response status: {resp.status}")
-                    if resp.status == 204:
-                        print(f"Successfully hung up call {call_uuid}")
-                    else:
-                        response_text = await resp.text()
-                        print(f"Failed to hang up call {call_uuid}: {resp.status} {response_text}")
-        except Exception as e:
-            print(f"Error hanging up call: {e}")
-    else:
-        # Your PHP conversion logic - call transfer API
-        print(f"Not Detected - Processing call transfer")
-        
         if lead_id and lead_call_id and user_id:
             # Get lead data from database using your style
             conn = get_db_connection()
