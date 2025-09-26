@@ -922,6 +922,7 @@ async def test():
     print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
 
     if machine and machine.lower() == 'true':
+        print(f"Machine Detected")
          url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
          auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
          auth_header = base64.b64encode(auth_string.encode()).decode()
@@ -939,12 +940,8 @@ async def test():
                         print(f"Failed to hang up call {call_uuid}: {resp.status} {response_text}")
          except Exception as e:
             print(f"Error hanging up call: {e}")
-    # Additional test success case - verify all required parameters exist
-    required_params = [lead_id, lead_phone, user_id, call_uuid, machine]
-    if all(required_params):
-        print("[TEST SUCCESS] All required parameters are present and non-empty")
     else:
-        print("[TEST WARNING] Some required parameters are missing or empty")
+        print(f"Not Detected")
 
 
 @app.websocket('/media-stream')
