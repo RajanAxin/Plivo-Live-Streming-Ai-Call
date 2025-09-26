@@ -768,15 +768,11 @@ async def home():
     # This is an AMD callback
     machine_detected = (await request.form).get('Machine')
     print(f"Machine detected: {machine_detected}")
+    res = plivo.Response()
     if machine_detected and machine_detected.lower() == 'true':
          print(f"Machine check inside detected: {machine_detected}")
-         # Machine detected - return voicemail
-         xml = """<?xml version="1.0" encoding="UTF-8"?>
-             <Response>
-                 <Speak>Hello I am calling from Topvanline Move regarding your recent moving request Please call us back at 15308050957 Thank you</Speak>
-                 <Hangup/>
-             </Response>"""
-         return Response(xml, mimetype="text/xml")
+         res.addHangup()
+         return Response(str(res), mimetype="text/xml")
 
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
