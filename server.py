@@ -770,7 +770,7 @@ async def home():
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
-     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
+    print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
 
     # This is an AMD callback
     machine_detected = (await request.form).get('Machine')
