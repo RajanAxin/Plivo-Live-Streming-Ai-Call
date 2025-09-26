@@ -777,13 +777,23 @@ async def home():
     print(f"Machine detected: {machine_detected}")
     if machine_detected and machine_detected.lower() == 'true':
          url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
-         auth = (PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN)
-         response = requests.delete(url, auth=auth)
-         if response.status_code == 204:
-             print(f"Call {call_uuid} hung up successfully")
-         else:
-             print(f"Failed to hang up call: {response.status_code} - {response.text}")
-         return '', 200
+         auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
+         auth_header = base64.b64encode(auth_string.encode()).decode()
+         try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    url,
+                    headers={"Authorization": f"Basic {auth_header}"}
+                ) as resp:
+                    print(f"[DEBUG] Response status: {resp.status}")
+                    if resp.status == 204:
+                        print(f"Successfully hung up call {call_uuid}")
+                    else:
+                        response_text = await resp.text()
+                        print(f"Failed to hang up call {call_uuid}: {resp.status} {response_text}")
+         except Exception as e:
+            print(f"Error hanging up call: {e}")
+        
 
     # Default values
     brand_id = 1
