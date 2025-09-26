@@ -913,7 +913,7 @@ async def test():
     lead_phone = request.args.get("lead_phone_number")
     user_id = request.args.get("user_id")
     lead_call_id = request.args.get("lead_call_id")
-    print(f"[AMD]  lead_call_id={lead_call_id}")
+    call_uuid = request.args.get("call_uuid")
 
     # POST form params from Plivo
     form = await request.form
