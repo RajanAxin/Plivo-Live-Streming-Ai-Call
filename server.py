@@ -906,7 +906,7 @@ async def test_disposition():
     # Return XML response
     return Response(content, status=200, mimetype="text/xml")
 
-@app.route("/test", methods=["GET", "POST"])
+@app.route("/test", methods=["POST"])
 async def test():
     data = await request.form
     # Query string params from Laravel
