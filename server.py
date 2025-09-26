@@ -932,7 +932,7 @@ async def test():
             if conn:
                 try:
                     cursor = conn.cursor(dictionary=True, buffered=True)
-                    cursor.execute("SELECT * FROM `lead` WHERE lead_id = %s", (lead_id,))
+                    cursor.execute("SELECT * FROM `leads` WHERE lead_id = %s", (lead_id,))
                     lead_data = cursor.fetchone()
                     print(f"Lead data: {lead_data}")
                     
