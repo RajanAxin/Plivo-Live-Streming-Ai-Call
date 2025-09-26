@@ -1,5 +1,5 @@
 import plivo
-from quart import Quart, websocket, Response, request, session
+from quart import Quart, websocket, Response, request
 from fastapi import Query
 import asyncio
 import websockets
@@ -105,7 +105,6 @@ SYSTEM_MESSAGE = (
 )
 
 app = Quart(__name__)
-app.secret_key = "ABCDEFGHIJKLMNOPQRST"
 
 
 # transcript and disposiation api
@@ -771,7 +770,6 @@ async def home():
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
     
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
-    session["call_uuid"] = call_uuid
 
     # Default values
     brand_id = 1
@@ -914,11 +912,12 @@ async def test():
     lead_id = request.args.get("lead_id")
     lead_phone = request.args.get("lead_phone_number")
     user_id = request.args.get("user_id")
+    lead_call_id = request.args.get("lead_call_id")
+    print(f"[AMD]  lead_call_id={lead_call_id}")
 
     # POST form params from Plivo
     form = await request.form
     machine = form.get("Machine")  # "true" if voicemail detected
-    call_uuid = session.get("call_uuid")
 
     print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
 
