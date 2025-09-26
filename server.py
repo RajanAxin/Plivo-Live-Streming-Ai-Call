@@ -1,4 +1,4 @@
-from plivo import plivoxml
+from plivo import RestClient
 from quart import Quart, websocket, Response, request
 from fastapi import Query
 import asyncio
@@ -106,7 +106,8 @@ SYSTEM_MESSAGE = (
 
 app = Quart(__name__)
 
-
+# init REST client with your creds
+client = RestClient(os.getenv("PLIVO_AUTH_ID"), os.getenv("PLIVO_AUTH_TOKEN"))
 
 # transcript and disposiation api
 
@@ -767,18 +768,23 @@ async def home():
 
     # This is an AMD callback
     machine_detected = (await request.form).get('Machine')
-    print(f"Machine detected: {machine_detected}")
-    res = plivoxml.ResponseElement()
-    if machine_detected and machine_detected.lower() == 'true':
-         print(f"Machine check inside detected: {machine_detected}")
-         res.add(plivoxml.HangupElement())
 
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
-    
+    print(f"Machine detected: {machine_detected}")
+
+    if machine_detected and machine_detected.lower() == "true":
+        # Hangup via REST API
+        try:
+            print(f"Machine check inside detected: {machine_detected}")
+            client.calls.delete(call_uuid)
+            print(f"Call {call_uuid} hung up (machine detected).")
+        except Exception as e:
+            print(f"Error hanging up call: {e}")
+
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
     
 
