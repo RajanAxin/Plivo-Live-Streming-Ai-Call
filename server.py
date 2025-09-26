@@ -764,36 +764,14 @@ def function_call_output(arg, item_id, call_id):
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
-
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
+    
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
-
-    # This is an AMD callback
-    machine_detected = (await request.form).get('Machine')
-    print(f"Machine detected: {machine_detected}")
-    if machine_detected and machine_detected.lower() == 'true':
-         url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
-         auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
-         auth_header = base64.b64encode(auth_string.encode()).decode()
-         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.delete(
-                    url,
-                    headers={"Authorization": f"Basic {auth_header}"}
-                ) as resp:
-                    print(f"[DEBUG] Response status: {resp.status}")
-                    if resp.status == 204:
-                        print(f"Successfully hung up call {call_uuid}")
-                    else:
-                        response_text = await resp.text()
-                        print(f"Failed to hang up call {call_uuid}: {resp.status} {response_text}")
-         except Exception as e:
-            print(f"Error hanging up call: {e}")
-        
+    
 
     # Default values
     brand_id = 1
@@ -944,15 +922,25 @@ async def test():
 
     print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
 
-    if machine and machine.lower() == "true":
-        print("Machine detected")
-        # Voicemail detected → play message and hang up
-        xml = """<?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-            <Speak>Hi I am calling from Topvanline Move regarding your recent moving request. Please call us back at 15308050957. Thank you.</Speak>
-            <Hangup/>
-        </Response>"""
-        return Response(xml, mimetype="text/xml")
+    if machine and machine.lower() == 'true':
+         url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
+         auth_string = f"{PLIVO_AUTH_ID}:{PLIVO_AUTH_TOKEN}"
+         auth_header = base64.b64encode(auth_string.encode()).decode()
+         try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    url,
+                    headers={"Authorization": f"Basic {auth_header}"}
+                ) as resp:
+                    print(f"[DEBUG] Response status: {resp.status}")
+                    if resp.status == 204:
+                        print(f"Successfully hung up call {call_uuid}")
+                    else:
+                        response_text = await resp.text()
+                        print(f"Failed to hang up call {call_uuid}: {resp.status} {response_text}")
+         except Exception as e:
+            print(f"Error hanging up call: {e}")
+    
 
 @app.websocket('/media-stream')
 async def handle_message():
