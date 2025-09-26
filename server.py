@@ -1,4 +1,4 @@
-import plivo
+from plivo import plivoxml
 from quart import Quart, websocket, Response, request
 from fastapi import Query
 import asyncio
@@ -768,11 +768,10 @@ async def home():
     # This is an AMD callback
     machine_detected = (await request.form).get('Machine')
     print(f"Machine detected: {machine_detected}")
-    res = plivo.Response()
+    res = plivoxml.ResponseElement()
     if machine_detected and machine_detected.lower() == 'true':
          print(f"Machine check inside detected: {machine_detected}")
-         res.addHangup()
-         return Response(str(res), mimetype="text/xml")
+         res.add(plivoxml.HangupElement())
 
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
