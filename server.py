@@ -1,4 +1,4 @@
-from plivo import RestClient
+import plivo
 from quart import Quart, websocket, Response, request
 from fastapi import Query
 import asyncio
@@ -106,8 +106,7 @@ SYSTEM_MESSAGE = (
 
 app = Quart(__name__)
 
-# init REST client with your creds
-client = RestClient(os.getenv("PLIVO_AUTH_ID"), os.getenv("PLIVO_AUTH_TOKEN"))
+
 
 # transcript and disposiation api
 
@@ -766,27 +765,25 @@ def function_call_output(arg, item_id, call_id):
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
 
-    # This is an AMD callback
-    machine_detected = (await request.form).get('Machine')
-
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
+     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
+
+    # This is an AMD callback
+    machine_detected = (await request.form).get('Machine')
     print(f"Machine detected: {machine_detected}")
-
-    if machine_detected and machine_detected.lower() == "true":
-        # Hangup via REST API
-        try:
-            print(f"Machine check inside detected: {machine_detected}")
-            client.calls.delete(call_uuid)
-            print(f"Call {call_uuid} hung up (machine detected).")
-        except Exception as e:
-            print(f"Error hanging up call: {e}")
-
-    print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
-    
+    if machine_detected and machine_detected.lower() == 'true':
+         url = f"https://api.plivo.com/v1/Account/{PLIVO_AUTH_ID}/Call/{call_uuid}/"
+         auth = (PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN)
+         response = requests.delete(url, auth=auth)
+         if response.status_code == 204:
+             print(f"Call {call_uuid} hung up successfully")
+         else:
+             print(f"Failed to hang up call: {response.status_code} - {response.text}")
+         return '', 200
 
     # Default values
     brand_id = 1
