@@ -972,7 +972,7 @@ async def test():
                 'rep_id': user_id,
                 'lead_category': 1,
                 'buffer_id_arr': '',
-                'timezone_id': lead_data['timezone_id'] if lead_data else None
+                'timezone_id': lead_data.get('t_timezone', 0) if lead_data else 0
             })
             
             # Determine which URL to use based on phone number
