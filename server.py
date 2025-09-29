@@ -147,7 +147,6 @@ def segment_speakers(transcript_text: str):
         - Live Transfer
         - DNC
         - Not Interested
-        - Voicemail
         - Follow Up
         - No Buyer
         - Voice Message
