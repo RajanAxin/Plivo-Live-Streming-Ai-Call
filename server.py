@@ -144,6 +144,7 @@ def segment_speakers(transcript_text: str):
             After splitting, analyze the conversation and return the final disposition in JSON.
 
         Possible dispositions are:
+        - Not Connected
         - Live Transfer
         - DNC
         - Not Interested
