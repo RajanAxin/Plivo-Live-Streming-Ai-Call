@@ -865,6 +865,7 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
+    call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     
