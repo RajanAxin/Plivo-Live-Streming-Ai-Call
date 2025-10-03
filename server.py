@@ -457,7 +457,7 @@ async def update_lead_after_call(lead_id, call_uuid):
         return False
 
 # Function to hang up call using Plivo API
-async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text", followup_datetime=None):
+async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text", followup_datetime=None, from_number=None, to_number=None):
     if not PLIVO_AUTH_ID or not PLIVO_AUTH_TOKEN:
         print("Plivo credentials not set. Cannot hang up call.")
         return
@@ -502,13 +502,21 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             }
             
             print(f"[TRANSFER] Payload: {payload}")
-            # Determine URL based on phone number
-            if lead_data['phone'] in ("6025298353", "6263216095"):
-                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+            print(f"[TRANSFER] From Number: {from_number}")
+            print(f"[TRANSFER] To Number: {to_number}")
+            if to_number == "12176186806":
+                # Determine URL based on phone number
+                if lead_data['phone'] in ("6025298353", "6263216095"):
+                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+                else:
+                    url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+
+                print(f"[TRANSFER] Using URL: {url}")
             else:
-                url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
-            
-            print(f"[TRANSFER] Using URL: {url}")
+                if lead_data['phone'] in ("6025298353", "6263216095"):
+                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                else:
+                    url = "https://zapprod:zap2024@linkup.software/api/calltransfertest"
             
             # Make the API call
             async with aiohttp.ClientSession() as session:
@@ -928,7 +936,7 @@ async def test():
     user_id = request.args.get("user_id")
     lead_call_id = request.args.get("lead_call_id")
     call_uuid = request.args.get("call_uuid")
-
+    to_number = (await request.form).get('To') or request.args.get('To')
     print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
 
     if machine and machine.lower() == 'true':
@@ -982,12 +990,19 @@ async def test():
                 'buffer_id_arr': '',
                 'timezone_id': lead_data.get('t_timezone', 0) if lead_data else 0
             })
-            
-            # Determine which URL to use based on phone number
-            if lead_data and lead_data.get('phone') == "6025298353":
-                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+
+
+            if to_number == "12176186806":
+                # Determine which URL to use based on phone number
+                if lead_data and lead_data.get('phone') == "6025298353":
+                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+                else:
+                    url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
             else:
-                url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+                if lead_data and lead_data.get('phone') == "6025298353":
+                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                else:
+                    url = "https://zapprod:zap2024@linkup.software/api/calltransfertest"
             
             # Make the API call
             try:
@@ -1020,6 +1035,7 @@ async def handle_message():
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
     lead_id = websocket.args.get('lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
+    
     
     print('audio_message', audio_message)
     print('voice_name', voice_name)
@@ -1497,7 +1513,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                                 conversation_state['disposition'], 
                                 conversation_state['lead_id'],
                                 conversation_state.get('disposition_message', ''),
-                                followup_datetime=conversation_state.get('followup_datetime')
+                                followup_datetime=conversation_state.get('followup_datetime'),
+                                from_number=conversation_state.get('from_number'),
+                                to_number=conversation_state.get('to_number')
                             )
                             return
                         else:
@@ -1570,7 +1588,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                                 conversation_state['disposition'], 
                                 conversation_state['lead_id'],
                                 conversation_state.get('disposition_message', ''),
-                                followup_datetime=conversation_state.get('followup_datetime')
+                                followup_datetime=conversation_state.get('followup_datetime'),
+                                from_number=conversation_state.get('from_number'),
+                                to_number=conversation_state.get('to_number')
                             )
                             return
                         else:
@@ -1681,7 +1701,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                                 conversation_state['disposition'], 
                                 conversation_state['lead_id'],
                                 conversation_state.get('disposition_message', ''),
-                                followup_datetime=conversation_state.get('followup_datetime')
+                                followup_datetime=conversation_state.get('followup_datetime'),
+                                from_number=conversation_state.get('from_number'),
+                                to_number=conversation_state.get('to_number')
                             )
                             return
                         else:
@@ -1745,7 +1767,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                                 conversation_state['disposition'], 
                                 conversation_state['lead_id'],
                                 conversation_state.get('disposition_message', ''),
-                                followup_datetime=conversation_state.get('followup_datetime')
+                                followup_datetime=conversation_state.get('followup_datetime'),
+                                from_number=conversation_state.get('from_number'),
+                                to_number=conversation_state.get('to_number')
                             )
                             return
                         else:
@@ -1825,7 +1849,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     conversation_state['disposition'], 
                     conversation_state['lead_id'],
                     conversation_state.get('disposition_message', ''),
-                    followup_datetime=conversation_state.get('followup_datetime')
+                    followup_datetime=conversation_state.get('followup_datetime'),
+                    from_number=conversation_state.get('from_number'),
+                    to_number=conversation_state.get('to_number')
                 )
                 conversation_state['pending_hangup'] = False
             
@@ -2171,7 +2197,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                                     conversation_state['disposition'],
                                     conversation_state['lead_id'],
                                     conversation_state.get('disposition_message', ''),
-                                    followup_datetime=conversation_state.get('followup_datetime')
+                                    followup_datetime=conversation_state.get('followup_datetime'),
+                                    from_number=conversation_state.get('from_number'),
+                                    to_number=conversation_state.get('to_number')
                                 )
                             except Exception as e:
                                 print(f"[ERROR] Failed to hang up call: {e}")
