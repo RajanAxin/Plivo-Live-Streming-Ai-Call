@@ -1,3 +1,4 @@
+
 import plivo
 from quart import Quart, websocket, Response, request, session
 from fastapi import Query
@@ -458,6 +459,7 @@ async def update_lead_after_call(lead_id, call_uuid):
 
 # Function to hang up call using Plivo API
 async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text", followup_datetime=None, from_number=None, to_number=None):
+    print("Rajan inside hangup_call")
     if not PLIVO_AUTH_ID or not PLIVO_AUTH_TOKEN:
         print("Plivo credentials not set. Cannot hang up call.")
         return
@@ -1501,7 +1503,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 10:
+                        if disposition == 1 or disposition == 9 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1576,7 +1578,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 10:
+                        if disposition == 1 or disposition == 9 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1689,7 +1691,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 10:
+                        if disposition == 1 or disposition == 9 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1755,7 +1757,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             conversation_state['lead_update_scheduled'] = True
                         
                         # IMMEDIATE TRANSFER: If disposition is 1 (transfer), trigger immediately
-                        if disposition == 1 or disposition == 10:
+                        if disposition == 1 or disposition == 9 or disposition == 10:
                             print("[TRANSFER] Immediately initiating call transfer")
                             conversation_state['transfer_initiated'] = True
                             
@@ -1938,20 +1940,20 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     cancel_response = {
                         "type": "response.cancel"
                     }
-                    #await openai_ws.send(json.dumps(cancel_response))
-                    #conversation_state['active_response'] = False
+                    await openai_ws.send(json.dumps(cancel_response))
+                    conversation_state['active_response'] = False
                 #disposition_message = '!'
                 # Create a response that will speak the disposition message
-                create_response = {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"],
-                        "temperature": 0.7,
-                        "instructions": f"Say exactly: '{disposition_message}'"
-                    }
-                }
-                if(disposition==11):
-                    await openai_ws.send(json.dumps(create_response))
+                # create_response = {
+                #     "type": "response.create",
+                #     "response": {
+                #         "modalities": ["text", "audio"],
+                #         "temperature": 0.7,
+                #         "instructions": f"Say exactly: '{disposition_message}'"
+                #     }
+                # }
+                #if(disposition == 11):
+                #await openai_ws.send(json.dumps(create_response))
                 conversation_state['active_response'] = True
                 conversation_state['is_disposition_response'] = True
                 conversation_state['disposition_response_id'] = None  # Will be set when response.created is received
