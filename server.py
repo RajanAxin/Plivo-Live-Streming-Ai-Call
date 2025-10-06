@@ -579,13 +579,15 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
     # 2️⃣ Build query params for Redirect
     params = {
         "lead_id": lead_id,
-        "disposition": 6 if disposition in (10, 11) else disposition
+        "disposition": 6 if disposition in (10, 11) else disposition,
+        'to_number': to_number
     }
     if followup_datetime:
         params["followupdatetime"] = followup_datetime
         print(f"[DEBUG] Including followupdatetime: {followup_datetime}")
     # Build the URL with proper encoding
     query_string = urlencode(params, quote_via=quote)
+    
     redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
     response = requests.post(redirect_url)
     print(f"[DEBUG] Redirect URL: {response}")
