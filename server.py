@@ -38,7 +38,7 @@ SYSTEM_MESSAGE = (
 
     "If the user asks or talks about anything regarding moving information, do not ask them for any details. Instead, describe the information you already have."
     "NOISE HANDLING RULES:"
-    "If you detect any of these phrases, treat them as noise and DO NOT respond: 'bye', 'thank you', 'ok', 'alright', 'yes', 'no', 'sure', 'yeah'."
+    "If you detect any of these phrases, treat them as noise and DO NOT respond: 'Bye', 'Bye.', 'Bye-bye.', 'bye-bye', 'bye-bye-bye', 'thank you', 'ok', 'alright', 'yes', 'no', 'sure', 'yeah'."
     "Only respond to substantive input (3+ words) that clearly addresses the conversation topic."
     "If you're unsure whether input is noise, wait for additional input before responding."
     
@@ -646,7 +646,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         return 8, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 6: Goodbye
-    elif re.search(r"\b(bye|goodbye|good bye|take care|see you)\b", transcript_lower):
+    elif re.search(r"\b(goodbye|good bye|take care|see you)\b", transcript_lower):
         return 6, "Nice to talk with you. Have a great day", None
     
     # Default disposition
