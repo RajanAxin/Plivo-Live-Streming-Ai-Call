@@ -1902,7 +1902,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 if not conversation_state.get('lead_update_scheduled', False) and conversation_state['lead_id'] and conversation_state['lead_id'] != 'unknown' and conversation_state['lead_id'] != 0:
                     print(f"[LEAD_UPDATE] Scheduling lead update for lead_id {conversation_state['lead_id']} after call {conversation_state['conversation_id']}")
                     asyncio.create_task(update_lead_after_call(conversation_state['lead_id'], conversation_state['conversation_id']))
-                    conversation_state['lead_update_scheduled'] = True
+                    #conversation_state['lead_update_scheduled'] = True
                 
                 # Cancel any active response
                 if conversation_state.get('active_response', True):
@@ -1913,12 +1913,34 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     }
                     await openai_ws.send(json.dumps(cancel_response))
                     conversation_state['active_response'] = False
-                
+                #disposition_message = '!'
+                # Create a response that will speak the disposition message
+                # create_response = {
+                #     "type": "response.create",
+                #     "response": {
+                #         "modalities": ["text", "audio"],
+                #         "temperature": 0.7,
+                #         "instructions": f"Say exactly: '{disposition_message}'"
+                #     }
+                # }
+                #if(disposition == 11):
+                #await openai_ws.send(json.dumps(create_response))
                 conversation_state['active_response'] = True
                 conversation_state['is_disposition_response'] = True
                 conversation_state['disposition_response_id'] = None  # Will be set when response.created is received
                 conversation_state['disposition_audio_sent'] = False  # Track if disposition audio has been sent
                 print(f"[DEBUG] Set is_disposition_response to True and created disposition response")
+
+                print(f"[LOG] Directly hanging up call with disposition {disposition}")
+                await hangup_call(
+                    conversation_state['conversation_id'], 
+                    conversation_state['disposition'], 
+                    conversation_state['lead_id'],
+                    conversation_state.get('disposition_message', ''),
+                    followup_datetime=conversation_state.get('followup_datetime'),
+                    from_number=conversation_state.get('from_number'),
+                    to_number=conversation_state.get('to_number')
+                )
             
             # Check if user is speaking in a language other than English
             elif any(ord(char) > 127 for char in transcript):  # Check for non-ASCII characters
@@ -2144,8 +2166,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                     print(f"[LOG] Disposition audio completed, scheduling hangup")
                     
                     # Only schedule hangup if not already scheduled and not a transfer
-                    if (not conversation_state.get('disposition_hangup_scheduled', False) and 
-                        conversation_state.get('disposition') != 1):  # Don't hangup for transfers
+                    if not conversation_state.get('disposition_hangup_scheduled', False):  
+                        #and conversation_state.get('disposition') != 1):  # Don't hangup for transfers
                         conversation_state['disposition_hangup_scheduled'] = True
                         
                         # Create a task to hang up the call after a longer delay
