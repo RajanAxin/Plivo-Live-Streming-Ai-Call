@@ -1104,6 +1104,7 @@ async def handle_message():
                 ai_agent_prompt = cursor.fetchone()
                 if ai_agent_prompt:
                     prompt_text = ai_agent_prompt['prompt_text']
+                    print("prompt_rajan", prompt_text)
                     # If we have lead_id, fetch lead data and replace placeholders
                     if lead_id and lead_id != 'unknown':
                         try:
@@ -1124,6 +1125,7 @@ async def handle_message():
                                             prompt_text = prompt_text.replace(placeholder, str(value))  # fallback
                                     else:
                                         prompt_text = prompt_text.replace(placeholder, str(value))
+                            print("prompt_final", prompt_text)
                         except (ValueError, TypeError):
                             print(f"Invalid lead_id: {lead_id}")
             except Exception as e:
