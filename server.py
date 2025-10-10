@@ -141,6 +141,7 @@ def segment_speakers(transcript_text: str):
             {"role": "user", "content": f"""
             Split this transcript into two speakers: Agent and Customer.
             Keep the order of the conversation, and don't add extra text.
+            Keep the correct back-and-forth flow. 
             Transcript:
             {transcript_text}
             After splitting, analyze the conversation and return the final disposition in JSON.
@@ -517,7 +518,8 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
                 print(f"[TRANSFER] Using URL: {url}")
             else:
                     print("to_number is not 12176186806")
-                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                    url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+                    #url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 # if lead_data['phone'] in ("6025298353", "6263216095"):
                 #     url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 # else:
@@ -1008,7 +1010,8 @@ async def test():
                     url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
             else:
                     print("to_number is not 12176186806")
-                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                    url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+                    #url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 # if lead_data and lead_data.get('phone') == "6025298353":
                 #     url = "https://snapit:mysnapit22@stagedialup.software/api/calltransfertest"
                 # else:
@@ -1104,7 +1107,6 @@ async def handle_message():
                 ai_agent_prompt = cursor.fetchone()
                 if ai_agent_prompt:
                     prompt_text = ai_agent_prompt['prompt_text']
-                    print("prompt_rajan", prompt_text)
                     # If we have lead_id, fetch lead data and replace placeholders
                     if lead_id and lead_id != 'unknown':
                         try:
@@ -1125,7 +1127,6 @@ async def handle_message():
                                             prompt_text = prompt_text.replace(placeholder, str(value))  # fallback
                                     else:
                                         prompt_text = prompt_text.replace(placeholder, str(value))
-                            print("prompt_final", prompt_text)
                         except (ValueError, TypeError):
                             print(f"Invalid lead_id: {lead_id}")
             except Exception as e:
