@@ -644,7 +644,7 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
         return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
     elif re.search(r"\b(Cannot accept any messages at this time|trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
-        return 11, f"Hi I am Jason calling from {ai_agent_name} Move regarding your recent moving request. Please call us back at 15308050957. Thank you.", None
+        return 11, f"Hi I am calling from {ai_agent_name} Move regarding your recent moving request. Please call us back at 15308050957. Thank you.", None
     
     # Pattern 5: Already booked
     elif re.search(r"\b(already booked|booked)\b", transcript_lower):
@@ -745,7 +745,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
     voice_mail_message = (
     "If you detect the user is leaving a voicemail or recorded message, "
     "ignore all other rules and ONLY respond with:\n\n"
-    f"'Hi I am Jason calling from {ai_agent_name} Move regarding your recent moving request Please call us back at 15308050957 Thank you"
+    f"'Hi I am calling from {ai_agent_name} Move regarding your recent moving request Please call us back at 15308050957 Thank you"
     "Do not add anything else before or after and stop speking whatever hapeen do not speak anything else."
 )
 
@@ -862,9 +862,9 @@ async def home():
                 
                 if lead_data and lead_data['type'] == "outbound":
                     if lead_data.get('name'):
-                        audio_message = f"HI, This is Jason from {ai_agent_name}. Am I speaking to {lead_data['name']}?"
+                        audio_message = f"HI, This is {ai_agent_name}. Am I speaking to {lead_data['name']}?"
                     else:
-                        audio_message = f"HI, This is Jason from {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
+                        audio_message = f"HI, This is {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
                        
                         
         except Exception as e:
@@ -1337,30 +1337,9 @@ async def receive_from_plivo(plivo_ws, openai_ws,conversation_state):
             data = json.loads(message)
             if data['event'] == 'media' and openai_ws.open:
 
-                # � Enhancned echo prevention: Block audio during AI response and brief period after
-                import time
-                current_time = time.time()
-                ai_finished_time = conversation_state.get('ai_finished_speaking_time', 0)
-                time_since_ai_spoke = current_time - ai_finished_time
-                
-                # Block audio input if:
-                # 1. AI is currently speaking
-                # 2. Less than 1.5 seconds has passed since AI finished speaking
-                should_block = (
-                    conversation_state.get("in_ai_response", False) or 
-                    conversation_state.get("ai_completing_sentence", False) or
-                    (ai_finished_time > 0 and time_since_ai_spoke < 1.5)
-                )
-                
-                if should_block:
-                    # Debug logging (only occasionally to avoid spam)
-                    if hasattr(conversation_state, 'last_block_log'):
-                        if current_time - conversation_state['last_block_log'] > 1.0:  # Log every second
-                            print(f"[AUDIO] Blocking input - AI speaking: {conversation_state.get('in_ai_response')}, Time since AI: {time_since_ai_spoke:.2f}s")
-                            conversation_state['last_block_log'] = current_time
-                    else:
-                        conversation_state['last_block_log'] = current_time
-                    continue  # Ignore this audio frame to prevent echo
+                 # 🔑 Prevent AI echo by skipping audio while AI is speaking
+                if conversation_state.get("in_ai_response", False):
+                    continue  # Ignore this audio frame
 
                 audio_append = {
                     "type": "input_audio_buffer.append",
@@ -1835,8 +1814,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
         # Handle user transcriptions
         elif event_type == 'conversation.item.input_audio_transcription.completed':
-            # === PERMANENT ECHO PREVENTION - LAYER 2: TRANSCRIPTION FILTERING ===
-            
             # Reset the ignored input flag at the start of each new input
             conversation_state['last_input_ignored'] = False
             
@@ -1847,121 +1824,53 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
             transcript = response.get('transcript', '').strip()
             
-            # === COMPREHENSIVE ECHO DETECTION SYSTEM ===
+            # --- NEW: Time-Based Echo Detection ---
             import time
             current_time = time.time()
             ai_finished_time = conversation_state.get('ai_finished_speaking_time', 0)
             time_since_ai_spoke = current_time - ai_finished_time
 
-            # COMPREHENSIVE ECHO-PRONE WORDS DATABASE
-            immediate_echo_noise = {
-                # Common responses
-                "bye", "okay", "ok", "yes", "no", "thanks", "thank you", "alright", 
-                "hello", "hi", "hey", "good", "great", "fine", "sure", "yeah", 
-                "right", "correct", "exactly", "absolutely", "definitely", "well",
-                # Filler words and sounds
-                "um", "uh", "hmm", "ah", "oh", "mm", "mhm", "uh huh", "mm hmm",
-                # Single letters and short sounds
-                "a", "i", "o", "e", "the", "and", "but", "so", "or",
-                # Common phone artifacts
-                "test", "testing", "check", "one", "two", "three"
-            }
+            # List of words that are likely echoes if heard immediately after AI speaks
+            immediate_echo_noise = {"bye", "okay", "ok", "yes", "no", "thanks", "thank you", "alright"}
 
-            # MULTIPLE TRANSCRIPT VARIATIONS FOR ROBUST CHECKING
-            transcript_clean = transcript.lower().strip().rstrip('.!?,:;')
-            transcript_original = transcript.lower().strip()
-            transcript_words = transcript_clean.split()
-            
-            # === LAYER 2A: IMMEDIATE ECHO DETECTION ===
-            # Check if this is likely an immediate echo (within 3 seconds of AI finishing)
-            if time_since_ai_spoke < 3.0:
-                is_immediate_echo = (
-                    transcript_clean in immediate_echo_noise or 
-                    transcript_original in immediate_echo_noise or
-                    (len(transcript_words) == 1 and transcript_words[0] in immediate_echo_noise)
-                )
-                
-                if is_immediate_echo:
-                    print(f"[ECHO-FILTER] 🚫 Immediate echo detected: '{transcript}' (heard {time_since_ai_spoke:.2f}s after AI)")
-                    conversation_state['last_input_ignored'] = True
-                    return
-            
-            # === LAYER 2B: AI SPEAKING STATE CHECK ===
-            if (conversation_state.get('in_ai_response', False) or 
-                conversation_state.get('ai_completing_sentence', False)):
-                print(f"[ECHO-FILTER] 🚫 Input during AI speech: '{transcript}'")
+            if time_since_ai_spoke < 1.5 and transcript.lower() in immediate_echo_noise:
+                print(f"[LOG] 🚫 Discarding likely immediate echo: '{transcript}' (heard {time_since_ai_spoke:.2f}s after AI)")
                 conversation_state['last_input_ignored'] = True
                 return
-            
-            # === LAYER 2C: SIMILARITY-BASED ECHO DETECTION ===
+            # --- END OF NEW CODE ---
+
+            # --- Echo Detection Check ---
             last_ai_sentence = conversation_state.get('last_ai_sentence', '')
             if last_ai_sentence:
-                similarity = difflib.SequenceMatcher(None, transcript_clean, last_ai_sentence.lower()).ratio()
-                print(f"[ECHO-FILTER] Similarity check: User='{transcript}' vs AI='{last_ai_sentence}' -> {similarity:.2f}")
-                
-                if similarity > 0.75:  # Lowered threshold for better detection
-                    print(f"[ECHO-FILTER] 🚫 High similarity echo: '{transcript}' (similarity: {similarity:.2f})")
+                similarity = difflib.SequenceMatcher(None, transcript.lower(), last_ai_sentence.lower()).ratio()
+                print(f"[DEBUG] Echo check: User='{transcript}' vs AI='{last_ai_sentence}' -> Similarity: {similarity:.2f}")
+                # If similarity is high, it's likely an echo. Discard it.
+                if similarity > 0.8:  # 80% similarity threshold
+                    print(f"[LOG] 🚫 Discarding input due to high similarity (echo): '{transcript}'")
                     conversation_state['last_input_ignored'] = True
                     return
+            # --- END OF ECHO CHECK ---
             
-            # === LAYER 2D: COMPREHENSIVE NOISE FILTERING ===
-            # Remove all non-alphabetic characters for noise detection
+            # --- Strengthened Noise Filters ---
             cleaned_transcript = re.sub(r'[^a-zA-Z\s]', '', transcript).strip().lower()
-            
-            # Skip empty, very short, or non-alphabetic inputs
             if not cleaned_transcript or len(cleaned_transcript) < 2:
-                print(f"[ECHO-FILTER] 🚫 Empty/short input: '{transcript}'")
+                print(f"[LOG] Ignored empty/short or non-alphabetic transcript: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
                 return
 
-            # COMPREHENSIVE FALSE POSITIVES DATABASE
             false_positives = {
-                # Single words
-                "yeah", "okay", "ok", "hmm", "um", "uh", "hi", "hey", "hello", "bye", "yes", "no",
-                "thanks", "thank", "you", "good", "great", "fine", "sure", "right", "well", "so",
-                "and", "but", "the", "a", "i", "me", "my", "we", "us", "it", "that", "this",
-                # Common phrases
-                "thank you", "bye bye", "all right", "same here", "good evening", "good morning",
-                "yeah yeah", "uh huh", "mm hmm", "oh yeah", "oh no", "oh ok", "oh okay",
-                # Test words
-                "test", "testing", "check", "one", "two", "three", "hello test"
+                "yeah", "okay","I've been...", "ok", "hmm", "um", "uh", "hi", "test", "testing", "thank you", "Thank you","Bye.", "Bye", "Bye.", "Bye-bye.", "bye-bye", "bye-bye-bye", "thanks", "Much", "All right.", "Yes.", "Thank you.", "Same here.", "Good evening.", "You", "hello", "hey"
             }
-            
-            # MULTI-LAYER FALSE POSITIVE DETECTION
-            is_false_positive = (
-                cleaned_transcript in false_positives or 
-                transcript_original in false_positives or
-                transcript_clean in false_positives or
-                # Check if it's just a single word from the false positives
-                (len(transcript_words) == 1 and transcript_words[0] in false_positives)
-            )
-            
-            if is_false_positive:
-                print(f"[ECHO-FILTER] 🚫 False positive detected: '{transcript}'")
+            if cleaned_transcript in false_positives:
+                print(f"[LOG] Ignored false positive: '{transcript}'")
                 conversation_state['last_input_ignored'] = True
                 return
-            
-            # === LAYER 2E: CONFIDENCE-BASED FILTERING ===
-            confidence = response.get("confidence", 1.0)
-            if confidence < 0.8:  # Lowered threshold for better filtering
-                print(f"[ECHO-FILTER] 🚫 Low confidence input: '{transcript}' (confidence: {confidence:.2f})")
+            # --- END OF NOISE FILTER ---
+
+            if response.get("confidence", 1.0) < 0.85:
+                print(f"[LOG] Ignored low-confidence transcript")
                 conversation_state['last_input_ignored'] = True
                 return
-            
-            # === LAYER 2F: SUSPICIOUS PATTERN DETECTION ===
-            # Detect patterns that are likely echoes or artifacts
-            suspicious_patterns = [
-                r'^[a-z]$',  # Single letters
-                r'^(ha|ah|oh|eh|uh)$',  # Single syllable sounds
-                r'^(mm|hmm|mhm)$',  # Humming sounds
-                r'^\w{1,2}$',  # Very short words (1-2 characters)
-            ]
-            
-            for pattern in suspicious_patterns:
-                if re.match(pattern, transcript_clean):
-                    print(f"[ECHO-FILTER] 🚫 Suspicious pattern: '{transcript}' matches {pattern}")
-                    conversation_state['last_input_ignored'] = True
-                    return
             
             # ✅ Passed filters → treat as real user input
             print(f"[User] {transcript}")
