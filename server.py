@@ -21,6 +21,7 @@ import re
 import html
 import time
 import openai
+import csv
 
 load_dotenv(dotenv_path='.env', override=True)
 
@@ -33,79 +34,228 @@ if not OPENAI_API_KEY:
 
 PORT = 5000
 
-# Updated SYSTEM_MESSAGE with clearer instructions
-SYSTEM_MESSAGE = (
+def load_conversation_flow(path="csvFile.csv"):
+    """Load the conversation flow from CSV file"""
+    rules = []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rules.append({
+                    "tag": row["Tag"].strip(),
+                    "subtag": row["Subtag"].strip(),
+                    "purpose": row["Purpose"].strip(),
+                    "triggers": [t.strip().lower() for t in row["Triggers (examples, ;-separated)"].split(";")],
+                    "required_facts": [r.strip() for r in row["RequiredFacts (needed before next)"].split(";") if r.strip()],
+                    "instruction": row["Micro-Script or Instruction (EN)"].strip(),
+                    "next_action": row["NextAction"].strip()
+                })
+            print(f"Loaded {len(rules)} conversation rules from CSV")
+            return rules
+    except Exception as e:
+        print(f"Error loading conversation flow CSV: {e}")
+        return None
 
-    "If the user asks or talks about anything regarding moving information, do not ask them for any details. Instead, describe the information you already have."
-    "NOISE HANDLING RULES:"
-    "If you detect any of these phrases, treat them as noise and DO NOT respond: 'Bye', 'Bye.', 'Bye-bye.', 'bye-bye', 'bye-bye-bye', 'thank you', 'ok', 'alright', 'yes', 'no', 'sure', 'yeah'."
-    "Only respond to substantive input (3+ words) that clearly addresses the conversation topic."
-    "If you're unsure whether input is noise, wait for additional input before responding."
+def build_system_message(rules=None):
+    """Build system message with dynamic rules integration"""
+    base_prompt = """
+You are a friendly, professional, emotionally aware virtual moving assistant.
+Your #1 goal: connect the caller live to a moving representative for the best quote as soon as they agree.
+
+Data you can rely on
+
+Lead data (pre-filled):
+Name: [lead_name]
+Phone: [lead_phone]
+Email: [lead_email]
+Origin: [lead_from_city], [lead_from_state] [lead_from_zipcode]
+Destination: [lead_to_city], [lead_to_state] [lead_to_zipcode]
+Move Date: [lead_move_date]
+Move Size: [lead_move_size]
+
+Tag Spreadsheet (provided at session start as rows with these columns):
+TagID | Phase | Tag | Subtag | Purpose | Triggers (examples, ;-separated) | RequiredFacts (needed before next) | Micro-Script or Instruction (EN) | NextAction
+You must select exactly one row per turn and use its Micro-Script (1–2 sentences max), then execute NextAction.
+
+Actions/Tools available:
+offer_live_transfer(partner_hint?), send_text_link(kind="quote"), transfer_to_dialup(), schedule_callback(time_window), mark_dnc(), crm_update(fields), check_availability(from_zip,to_zip,move_date,size_or_items).
+Conversation style & behavior
+
+Start friendly, by name: “Hi [lead_name], how are you today?” Then 1 short line: “I’m calling about your move from [from_city] to [to_city] on [move_date] to get you the best quote.”
+
+One question at a time. Keep every reply 1–2 short sentences, then stop.
+
+Never repeat a question. Use lead data you already have. Only ask for details that are missing or unclear.
+
+Interrupt-friendly: if the caller starts speaking, stop immediately.
+
+Primary outcome: as soon as interest is warm, ask: “Want me to connect you live to a mover for the best quote?”
+
+Pricing: do not give exact prices. If asked “how much/price,” connect them to a mover who will provide a quick ballpark based on date & items.
+
+Truck-rental persuasion: If they mention U-Haul/Penske/renting a truck:
+
+Line 1: “DIY adds fuel, tolls, equipment, and your time. Full-service is one clear price and can be cheaper overall.”
+
+Line 2: “Pros handle the lifting and driving so you keep your day. Delivery is scheduled to fit your timing.”
+Then ask to connect.
+
+Access/big items/storage: Only if it helps rapport or improves the quote; otherwise skip. Ask about storage only if the caller hints at it.
+
+Routing: Anything not about getting a quote (COI, reschedule, cancel, claims, invoices) → Support (DialUp).
+
+Spanish: If Spanish is detected or requested, route to Support (DialUp) (do not handle Spanish here).
+
+Do-Not-Call: If requested, confirm once and end: “Understood—I’ve added you to Do-Not-Call and won’t contact you again. Wishing you a smooth move.”
+Slot logic (the “4 basics”)
+
+Track these basics as facts: from_zip, to_zip, move_date, size_or_items.
+
+Transfer-ready ideally has all four, but if the caller says “yes, connect me” and one is missing, ask just that one (once), then connect.
+
+If a fact fails twice (noisy line), offer to send a text link to confirm that detail.
+How to use the spreadsheet each turn
+
+Phase awareness: Start in GREET_COLLECT_CORE. When all 4 basics are filled or rental intent appears, use PERSUADE_TRANSFER. SUPPORT_ROUTING is always available for non-quote topics/DNC/Spanish.
+
+Row selection order (deterministic):
+
+If caller asks about price with missing basics → choose the PRICE_BEFORE_FACTS row.
+
+Else if any of the 4 basics is missing → choose the matching ASK_… row that collects only that fact.
+
+Else if rental/time-pressure triggers → choose a PERSUADE_… row (up to 2 lines), then the ASK_TRANSFER row.
+
+Else if they are ready/agree → choose CONFIRM_TRANSFER.
+
+Else for edge cases (legitimacy, angry, DNC, Spanish, no availability) → choose the appropriate SUPPORT_ROUTING row.
+
+Speak exactly the Micro-Script (1–2 sentences). Do not invent pricing or long explanations.
+
+Execute NextAction:
+
+COLLECT:fieldA|fieldB → ask/store just those fields (don’t re-ask filled ones).
+
+ACTION:offer_live_transfer / send_text_link / transfer_to_dialup / schedule_callback / mark_dnc / crm_update.
+
+BRANCH:if_yes->X|else->Y → follow the caller’s response.
+
+NEXT:TAGCODE → immediately follow the indicated row next turn.
+
+DROP_AFTER_INTRO → after warm intro to mover (~10s), leave unless asked to stay.
+
+END → end politely.
+Transfer & warm intro policy
+
+On yes + availability is fine, run offer_live_transfer().
+
+Give a 10-second warm intro: “Hi [Mover], I’m with [Caller]… From [from_zip] to [to_zip], moving on [move_date], [size_or_items]. They’re looking for your best quote today.”
+
+Then drop unless asked to stay.
+Guardrails (non-negotiable)
+
+No exact pricing—the mover gives ballpark after connection.
+
+No competitor bashing—frame as side-by-side via live connection.
+
+Don’t repeat questions; ask only what’s missing.
+
+Respect DNC immediately.
+ASSISTANT OUTPUT FORMAT (return this JSON each turn)
+Always return a compact JSON so our system can act quickly:
+"When responding, you must provide your answer in the following JSON format: "
+    "{"
+    "  \"selected_row\": \"TagID\","
+    "  \"say_ssml\": \"<speak>One or two short sentences here.<break time='200ms'/></speak>\","
+    "  \"collected_facts\": {},"
+    "  \"actions\": [],"
+    "  \"next_phase_hint\": \"\","
+    "  \"notes\": \"\""
+    "}"
+    "The say_ssml field should contain 1-2 short sentences in SSML format with natural pauses. "
+    "Stop speaking the instant the caller starts talking."
+    ""
+CSV COLUMNS AND HOW TO USE THEM:
+
+1. Tag / Subtag:
+   - Logical identifiers for the conversation step.
+   - Subtag refines the Tag (e.g., GRT:PRIMARY).
+
+2. Purpose:
+   - Describes WHY this step exists (e.g., greeting, confirm, ask info).
+
+3. Triggers:
+   - A list of phrases or keywords (semicolon-separated).
+   - If user input matches any trigger, this row becomes eligible.
+   - Special triggers:
+       • always_on → always valid
+       • start / first turn → only for the first message
+       • tool_def → system/tool setup (not spoken)
+       • hello / hi → greeting triggers
+
+4. RequiredFacts (needed before next):
+   - A list of facts that must already be known before using this step.
+   - If any required fact is missing, skip this row.
+
+5. Micro-Script or Instruction (EN):
+   - EXACT text the AI must say to the user.
+   - Do NOT add extra words.
+   - Do NOT change wording.
+   - Say it exactly as written.
+
+6. NextAction:
+   - Defines the NEXT Tag/Subtag to go to or logical pointer.
+   - After speaking the Micro-Script, the AI should move to this next step.
+"""
     
-
-    "MISSING INFORMATION RULE: "
-    "You must always collect missing customer details, one at a time, in the following strict order: "
-    "Name → Email → Phone → Origin → Destination → Move Date → Move Size. "
-    "If you have no information about the customer, always start by asking their Name. "
-    "After receiving Name, ask for Email if missing, then Phone if missing, then Origin, then Destination, then Move Date, then Move Size. "
-    "Do NOT skip any of these fields if they are missing. "
-    "Always wait for the user to respond before moving to the next missing detail. "
-    "Example fallback questions for missing info: "
-    "- Name: 'May I have your full name please?' "
-    "- Email: 'Could you share your email please?' "
-    "- Origin: 'What city and state are you moving from?' "
-    "- Destination: 'What city and state are you moving to?' "
-    "- Move Date: 'What date are you planning your move?' "
-    "- Move Size: 'What is the size of your move, for example a 1-bedroom or 3-bedroom home?'"
-
-    "CRITICAL RULE: After completing a FULL question, STOP speaking and WAIT for the user's response. "
-    "As Ai-agent do not speak No response anytime",
-    "Always complete your sentences and thoughts before stopping. "
-    "Do not stop in the middle of a sentence or phrase. "
-    "Always speak briefly (1-2 sentences). Ask one question, then wait for the user's response. "
-    "NEVER continue talking, NEVER add more context, and NEVER ask a follow-up until the user replies. "
-    "Important: If the user says 'Sorry' or i can't hear you then Please repet a previous question. "
-    "INTRODUCTION RULE: At the start of the call, ONLY say: 'Hi, this is <agent_name>. Am I speaking to <lead_name>?' "
-    "This introduction MUST be the ONLY thing spoken. Do not add any other words. Do not continue with any sales pitch. Do not say 'Great' or anything else. "
-    "If the user answers, then continue the conversation based on their response. "
-    "WAIT FOR USER CONFIRMATION: After asking 'Am I speaking to [name]?', you MUST wait for the user to confirm before proceeding. Do NOT continue with questions about moving services until the user confirms their identity. "
-    "If the user confirms their identity (e.g., 'Yes', 'That's me', 'Speaking'), then ask: 'Great! How are you today?' and wait for response. "
-    "Only after they respond to 'How are you?' should you proceed with moving service questions. "
-    "When asking how the user is doing, ONLY say exactly one of: 'How are you?' or 'Hi <lead_name>. How are you?'. Then STOP. "
-    "Do not repeat the same response back-to-back. "
-    "If the user says sorry then please repeat your last question. "
-    "If the user says 'okay' or 'ok' then please ask next question. "
+    # Add dynamic rules section if rules are provided
+    rules = load_conversation_flow()
+    if rules:
+        dynamic_section = f"\n\nCURRENTLY LOADED CONVERSATION FLOW ({len(rules)} rules):\n"
+        
+        # Group rules by tag for better organization
+        rules_by_tag = {}
+        for rule in rules:
+            tag = rule['tag']
+            if tag not in rules_by_tag:
+                rules_by_tag[tag] = []
+            rules_by_tag[tag].append(rule)
+        
+        for tag, tag_rules in rules_by_tag.items():
+            dynamic_section += f"\n[{tag}]:\n"
+            for rule in tag_rules:
+                dynamic_section += f"  • {rule['subtag']}: {rule['purpose']}\n"
+                dynamic_section += f"    Triggers: {', '.join(rule['triggers'][:3])}{'...' if len(rule['triggers']) > 3 else ''}\n"
+                dynamic_section += f"    Required: {', '.join(rule['required_facts']) if rule['required_facts'] else 'None'}\n"
+                dynamic_section += f"    Next: {rule['next_action']}\n"
     
-    "IDENTITY RULE: "
-    "If the user says 'No I'm <name>' or 'No this is <name>' then respond with: 'Sorry about that <name>. How are you?'. "
-    "When handling this case, you MUST completely IGNORE the MISSING INFORMATION RULE. "
-    "Do not ask for Name, Email, Phone, Origin, Destination, Move Date, or Move Size unless the user VOLUNTEERS them later. "
-    "After the apology and 'How are you?', continue the conversation naturally without collecting any information. "
+    else:
+        dynamic_section = "\n\nNo conversation rules loaded yet."
+    
+    general_rules = """
+GENERAL RULES:
+- Only speak using the Micro-Script.
+- Never jump to a step unless Triggers match and RequiredFacts are satisfied.
+- Ask ONE question at a time if the micro-script is a question.
+- After speaking, STOP and wait for user response.
+- Use user response to:
+    • Capture facts (name, date, etc.)
+    • Decide which row's triggers match next.
+- If multiple rows are valid, pick the most specific match.
+- If no rows match, politely ask the user to clarify.
 
-    "EXIT RULES: "
-    "If the user says 'invalid number', 'wrong number', 'already booked', or 'I booked with someone else', respond with: 'No worries, sorry to bother you. Have a great day.' "
-    "If the user says 'don't call', 'do not call', 'not to call', 'not interested', 'not looking', 'take me off', 'unsubscribe', or 'remove me from your list', respond with: 'No worries, sorry to bother you. Have a great day.' "
-    "If the user says 'bye', 'goodbye', 'take care', or 'see you', respond with: 'Nice to talk with you. Have a great day.' "
-    "If the user says 'busy', 'call me later', 'in a meeting', 'occupied', 'voicemail', or anything meaning they cannot talk now, respond with: 'I will call you later. Nice to talk with you. Have a great day.' "
-    "If the user says  'cannot accept any messages at this time','not available','trying to reach is unavailable','call you back as soon as possible', 'automated voice messaging system', 'please record your message', 'record your message', 'voicemail', 'voice mail', 'leave your message', 'please leave the name and number', 'please leave a name and number', 'leave me a message', 'leave a message', 'recording', 'leave me your', 'will get back to you', 'leave me your', 'the person you are trying to reach is unavailable', 'please leave a message after the tone', 'your call is being forwarded', 'the subscriber you have dialed', 'not available','has a voice mailbox', 'at the tone', 'after the tone' then do not respond please not speak anything'. "
-    "If the user says 'human', respond with: 'I'll transfer you to a human agent who can better assist you.' "
-    "If the user says 'moving company', 'moving specialist', 'moving agent', 'moving company','moving assistance', 'moving representative' respond with: 'I'll transfer you to a moving company who can better assist you.' "
-    "If silence is detected, only respond with: 'Are you there?'. Do not say anything else."
+REMEMBER:
+The CSV is your SOURCE OF TRUTH.
+Never invent new questions.
+Never skip steps unless NextAction says so.
+"""
+    
+    return base_prompt + dynamic_section + general_rules
 
-   "CLOSING RULE: "
-    "You must NEVER transfer the call immediately after greetings. "
-    "After asking 'How are you?' and receiving the response, you must first confirm at least 2 moving details (such as Move Date, Origin, Destination, or Move Size). "
-    "You must not combine multiple details into a single question. "
-    "Instead, confirm each detail individually using the information you already have. "
-    "Examples: 'I can see that you’re moving from Weslaco, TX to Visalia, CA, right?' "
-    "'Your move is scheduled for September 8th, 2025, right?' "
-    "'Your move size is 3, right?' "
-    "After confirming the 2nd detail, you must wait for the customer’s response and then proceed to the next step. "
-    "Once at least 2 details have been confirmed, you may say: "
-    "'Let me transfer your call to a moving specialist to discuss pricing options.' "
-    "Do not rephrase, do not add extra words, and do not ask open-ended questions. "
-    "If any detail is missing, skip it—never ask the customer to provide it."
-)
+# Usage
+rules = load_conversation_flow("csvFile.csv")
+system_message = build_system_message(rules)
+print(system_message)
 
 app = Quart(__name__)
 app.secret_key = "ABCDEFGHIJKLMNOPQRST"
@@ -517,7 +667,7 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
 
                 print(f"[TRANSFER] Using URL: {url}")
             else:
-                if lead_data['phone'] in ("6025298353", "6266957119"):
+                if lead_data and lead_data.get('phone') == "6025298353":
                     url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 else:    
                     print("to_number is not 12176186806")
@@ -741,12 +891,24 @@ async def create_response_with_completion_instructions(openai_ws, instructions, 
 
 # Updated send_Session_update function
 async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name):
+    SYSTEM_MESSAGE = build_system_message()
     # Combine the system message with the custom prompt
     voice_mail_message = (
     "If you detect the user is leaving a voicemail or recorded message, "
     "ignore all other rules and ONLY respond with:\n\n"
     f"'Hi I am jason calling from {ai_agent_name} Move regarding your recent moving request Please call us back at 15308050957 Thank you"
     "Do not add anything else before or after and stop speking whatever hapeen do not speak anything else."
+    "When responding, you must provide your answer in the following JSON format: "
+    "{"
+    "  \"selected_row\": \"TagID\","
+    "  \"say_ssml\": \"<speak>One or two short sentences here.<break time='200ms'/></speak>\","
+    "  \"collected_facts\": {},"
+    "  \"actions\": [],"
+    "  \"next_phase_hint\": \"\","
+    "  \"notes\": \"\""
+    "}"
+    "The say_ssml field should contain 1-2 short sentences in SSML format with natural pauses. "
+    "Stop speaking the instant the caller starts talking."
 )
 
     full_prompt = (
@@ -765,7 +927,23 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": 1200  # Increase from default (500)
                 },
-            "tools": [],
+            "tools": [ {
+                    "type": "function",
+                    "name": "send_structured_response",
+                    "description": "Send a structured response in the required JSON format",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "selected_row": { "type": "string", "description": "The tag/subtag from CSV that triggered this response" },
+                            "say_ssml": { "type": "string", "description": "SSML formatted response with 1-2 short sentences" },
+                            "collected_facts": { "type": "object", "description": "Facts captured this turn" },
+                            "actions": { "type": "array", "description": "Actions to take", "items": { "type": "object" } },
+                            "next_phase_hint": { "type": "string", "description": "Hint for the orchestrator" },
+                            "notes": { "type": "string", "description": "Short rationale or branch" }
+                        },
+                        "required": ["selected_row", "say_ssml"]
+                    }
+                }],
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
             "voice": voice_name,
@@ -862,7 +1040,7 @@ async def home():
                 
                 if lead_data and lead_data['type'] == "outbound":
                     if lead_data.get('name'):
-                        audio_message = f"HI, This is jason from {ai_agent_name}. Am I speaking to {lead_data['name']}?"
+                        audio_message = f"HI {ai_agent_name}. how are you today?"
                     else:
                         audio_message = f"HI, This is jason from {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
                        
@@ -1007,12 +1185,12 @@ async def test():
 
             if to_number == "12176186806":
                 # Determine which URL to use based on phone number
-                if lead_data['phone'] in ("6025298353", "6266957119"):
+                if lead_data and lead_data.get('phone') == "6025298353":
                     url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
                 else:
                     url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
             else:
-                if lead_data['phone'] in ("6025298353", "6266957119"):
+                if lead_data and lead_data.get('phone') == "6025298353":
                     url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 else:    
                     print("to_number is not 12176186806")
@@ -1102,7 +1280,7 @@ async def handle_message():
     }
     
     # Fetch prompt_text from database using ai_agent_id
-    prompt_text = SYSTEM_MESSAGE  # Default to system message
+    prompt_text = build_system_message()  # Default to system message
     if ai_agent_id:
         conn = get_db_connection()
         if conn:
@@ -1143,7 +1321,7 @@ async def handle_message():
                     conn.close()
     
     # Combine with SYSTEM_MESSAGE
-    prompt_to_use = f"{SYSTEM_MESSAGE}\n\n{prompt_text}"
+    prompt_to_use = f"{build_system_message()}\n\n{prompt_text}"
     print(f"prompt_text: {prompt_to_use}")
     
     # Timeout handler functions
@@ -1311,6 +1489,7 @@ async def handle_message():
                 f"If they don't confirm but give their name, respond with: 'Sorry about that [name]. How are you today?'"
                 f"For this initial introduction only, follow these instructions instead of the WAIT FOR USER CONFIRMATION rule."
                 f"IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+                
             )
             
             await create_response_with_completion_instructions(openai_ws, initial_prompt)
@@ -1364,7 +1543,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
         
         # Log all event types for debugging (except audio deltas to reduce noise)
         if event_type not in ['response.audio.delta', 'response.audio.done']:
-            print(f"[DEBUG] Received event: {event_type}")
+            
+            # Extract the text from the response
+            text_content = response.get('delta', response.get('text', ''))
+            
+            print("\n" + "="*50)
+            print("FULL OPENAI JSON RESPONSE:")
+            print(json.dumps(response, indent=2))
+            print("="*50 + "\n")
+        
+        print('response received from OpenAI Realtime API: ', response['type'])
+        
         
 
         # SIMPLE: Just add AI activity events to the same timeout cancellation logic
@@ -1411,6 +1600,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 delta = response.get('delta', '')
                 print(f"[AI Disposition] {delta}", end='', flush=True)
                 conversation_state['disposition_text'] = conversation_state.get('disposition_text', '') + delta
+                if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                    json_response = json.loads(text_content)
+                    process_structured_response(json_response, plivo_ws)
                 return
                 
             delta = response.get('delta', '')
@@ -1436,6 +1628,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
 
             # Check if this was an "Are you there?" response
             text = response.get('text', '') or conversation_state['current_ai_text']
+
+            if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                json_response = json.loads(text_content)
+                process_structured_response(json_response, plivo_ws)
+                return
+            
             if text and "are you there" in text.lower():
                 print(f"[DEBUG] Detected 'Are you there?' response: {text}")
                 conversation_state['is_are_you_there_response'] = True
@@ -2223,6 +2421,38 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
+
+
+def process_structured_response(json_response, plivo_ws):
+    """Process the structured JSON response from OpenAI and send appropriate audio to Plivo"""
+    try:
+        # Extract the SSML content
+        say_ssml = json_response.get('say_ssml', '')
+        if say_ssml:
+            # For now, we'll just print the structured response
+            # In a real implementation, you would convert SSML to audio and send it to Plivo
+            print("\n" + "="*50)
+            print("STRUCTURED RESPONSE FROM OPENAI:")
+            print(json.dumps(json_response, indent=2))
+            print("="*50 + "\n")
+            
+            # Log the collected facts
+            if 'collected_facts' in json_response and json_response['collected_facts']:
+                print("COLLECTED FACTS:", json.dumps(json_response['collected_facts'], indent=2))
+            
+            # Log any actions
+            if 'actions' in json_response and json_response['actions']:
+                print("ACTIONS:", json.dumps(json_response['actions'], indent=2))
+                
+            # Log the next phase hint
+            if 'next_phase_hint' in json_response and json_response['next_phase_hint']:
+                print("NEXT PHASE HINT:", json_response['next_phase_hint'])
+                
+            # Log the notes
+            if 'notes' in json_response and json_response['notes']:
+                print("NOTES:", json_response['notes'])
+    except Exception as e:
+        print(f"Error processing structured response: {e}")
 
     
 if __name__ == "__main__":
