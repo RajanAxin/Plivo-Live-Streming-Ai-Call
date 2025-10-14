@@ -660,14 +660,14 @@ async def hangup_call(call_uuid, disposition, lead_id, text_message="I have text
             print(f"[TRANSFER] To Number: {to_number}")
             if to_number == "12176186806":
                 # Determine URL based on phone number
-                if lead_data['phone'] in ("6025298353", "6263216095"):
+                if lead_data['phone'] in ("6025298353", "6263216095", "6266957119"):
                     url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
                 else:
                     url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
 
                 print(f"[TRANSFER] Using URL: {url}")
             else:
-                if lead_data and lead_data.get('phone') == "6025298353":
+                if lead_data['phone'] in ("6025298353", "6263216095", "6266957119"):
                     url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 else:    
                     print("to_number is not 12176186806")
@@ -1185,12 +1185,12 @@ async def test():
 
             if to_number == "12176186806":
                 # Determine which URL to use based on phone number
-                if lead_data and lead_data.get('phone') == "6025298353":
+                if lead_data['phone'] in ("6025298353", "6263216095", "6266957119"):
                     url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
                 else:
                     url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
             else:
-                if lead_data and lead_data.get('phone') == "6025298353":
+                if lead_data['phone'] in ("6025298353", "6263216095", "6266957119"):
                     url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 else:    
                     print("to_number is not 12176186806")
