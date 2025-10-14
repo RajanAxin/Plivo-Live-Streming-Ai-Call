@@ -81,7 +81,7 @@ Actions/Tools available:
 offer_live_transfer(partner_hint?), send_text_link(kind="quote"), transfer_to_dialup(), schedule_callback(time_window), mark_dnc(), crm_update(fields), check_availability(from_zip,to_zip,move_date,size_or_items).
 Conversation style & behavior
 
-Start friendly, by name: “Hi [lead_name], how are you today?” Then 1 short line: “I’m calling about your move from [from_city] to [to_city] on [move_date] to get you the best quote.”
+Start friendly, by name: “Hi [lead_name], how are you today?” Then 1 short line: “I’m calling about your move from [lead_from_city] to [lead_to_city] on [lead_move_date] to get you the best quote.”
 
 One question at a time. Keep every reply 1–2 short sentences, then stop.
 
@@ -161,20 +161,6 @@ No competitor bashing—frame as side-by-side via live connection.
 Don’t repeat questions; ask only what’s missing.
 
 Respect DNC immediately.
-ASSISTANT OUTPUT FORMAT (return this JSON each turn)
-Always return a compact JSON so our system can act quickly:
-"When responding, you must provide your answer in the following JSON format: "
-    "{"
-    "  \"selected_row\": \"TagID\","
-    "  \"say_ssml\": \"<speak>One or two short sentences here.<break time='200ms'/></speak>\","
-    "  \"collected_facts\": {},"
-    "  \"actions\": [],"
-    "  \"next_phase_hint\": \"\","
-    "  \"notes\": \"\""
-    "}"
-    "The say_ssml field should contain 1-2 short sentences in SSML format with natural pauses. "
-    "Stop speaking the instant the caller starts talking."
-    ""
 CSV COLUMNS AND HOW TO USE THEM:
 
 1. Tag / Subtag:
@@ -898,17 +884,6 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
     "ignore all other rules and ONLY respond with:\n\n"
     f"'Hi I am jason calling from {ai_agent_name} Move regarding your recent moving request Please call us back at 15308050957 Thank you"
     "Do not add anything else before or after and stop speking whatever hapeen do not speak anything else."
-    "When responding, you must provide your answer in the following JSON format: "
-    "{"
-    "  \"selected_row\": \"TagID\","
-    "  \"say_ssml\": \"<speak>One or two short sentences here.<break time='200ms'/></speak>\","
-    "  \"collected_facts\": {},"
-    "  \"actions\": [],"
-    "  \"next_phase_hint\": \"\","
-    "  \"notes\": \"\""
-    "}"
-    "The say_ssml field should contain 1-2 short sentences in SSML format with natural pauses. "
-    "Stop speaking the instant the caller starts talking."
 )
 
     full_prompt = (
@@ -927,23 +902,7 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": 1200  # Increase from default (500)
                 },
-            "tools": [ {
-                    "type": "function",
-                    "name": "send_structured_response",
-                    "description": "Send a structured response in the required JSON format",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "selected_row": { "type": "string", "description": "The tag/subtag from CSV that triggered this response" },
-                            "say_ssml": { "type": "string", "description": "SSML formatted response with 1-2 short sentences" },
-                            "collected_facts": { "type": "object", "description": "Facts captured this turn" },
-                            "actions": { "type": "array", "description": "Actions to take", "items": { "type": "object" } },
-                            "next_phase_hint": { "type": "string", "description": "Hint for the orchestrator" },
-                            "notes": { "type": "string", "description": "Short rationale or branch" }
-                        },
-                        "required": ["selected_row", "say_ssml"]
-                    }
-                }],
+            "tools": [],
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
             "voice": voice_name,
@@ -1543,19 +1502,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
         
         # Log all event types for debugging (except audio deltas to reduce noise)
         if event_type not in ['response.audio.delta', 'response.audio.done']:
-            
-            # Extract the text from the response
-            text_content = response.get('delta', response.get('text', ''))
-            
-            print("\n" + "="*50)
-            print("FULL OPENAI JSON RESPONSE:")
-            print(json.dumps(response, indent=2))
-            print("="*50 + "\n")
-        
-        print('response received from OpenAI Realtime API: ', response['type'])
-        
-        
-
+            print(f"[DEBUG] Received event: {event_type}")
         # SIMPLE: Just add AI activity events to the same timeout cancellation logic
         # that you already have for user events
         activity_events = [
@@ -1600,9 +1547,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 delta = response.get('delta', '')
                 print(f"[AI Disposition] {delta}", end='', flush=True)
                 conversation_state['disposition_text'] = conversation_state.get('disposition_text', '') + delta
-                if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
-                    json_response = json.loads(text_content)
-                    process_structured_response(json_response, plivo_ws)
                 return
                 
             delta = response.get('delta', '')
@@ -1628,11 +1572,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
 
             # Check if this was an "Are you there?" response
             text = response.get('text', '') or conversation_state['current_ai_text']
-
-            if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
-                json_response = json.loads(text_content)
-                process_structured_response(json_response, plivo_ws)
-                return
             
             if text and "are you there" in text.lower():
                 print(f"[DEBUG] Detected 'Are you there?' response: {text}")
@@ -2421,38 +2360,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                 
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
-
-
-def process_structured_response(json_response, plivo_ws):
-    """Process the structured JSON response from OpenAI and send appropriate audio to Plivo"""
-    try:
-        # Extract the SSML content
-        say_ssml = json_response.get('say_ssml', '')
-        if say_ssml:
-            # For now, we'll just print the structured response
-            # In a real implementation, you would convert SSML to audio and send it to Plivo
-            print("\n" + "="*50)
-            print("STRUCTURED RESPONSE FROM OPENAI:")
-            print(json.dumps(json_response, indent=2))
-            print("="*50 + "\n")
-            
-            # Log the collected facts
-            if 'collected_facts' in json_response and json_response['collected_facts']:
-                print("COLLECTED FACTS:", json.dumps(json_response['collected_facts'], indent=2))
-            
-            # Log any actions
-            if 'actions' in json_response and json_response['actions']:
-                print("ACTIONS:", json.dumps(json_response['actions'], indent=2))
-                
-            # Log the next phase hint
-            if 'next_phase_hint' in json_response and json_response['next_phase_hint']:
-                print("NEXT PHASE HINT:", json_response['next_phase_hint'])
-                
-            # Log the notes
-            if 'notes' in json_response and json_response['notes']:
-                print("NOTES:", json_response['notes'])
-    except Exception as e:
-        print(f"Error processing structured response: {e}")
 
     
 if __name__ == "__main__":
