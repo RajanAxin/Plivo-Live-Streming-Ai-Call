@@ -13,6 +13,7 @@ import logging
 import base64
 from dotenv import load_dotenv
 import os
+from typing import Dict, List, Optional
 from urllib.parse import quote, urlencode
 from database import get_db_connection
 import concurrent.futures
@@ -36,212 +37,299 @@ PORT = 5000
 
 def load_conversation_flow(path="csvFile.csv"):
     """Load the conversation flow from CSV file"""
-    rules = []
+    rules = {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                rules.append({
-                    "tag": row["Tag"].strip(),
-                    "subtag": row["Subtag"].strip(),
-                    "purpose": row["Purpose"].strip(),
-                    "triggers": [t.strip().lower() for t in row["Triggers (examples, ;-separated)"].split(";")],
-                    "required_facts": [r.strip() for r in row["RequiredFacts (needed before next)"].split(";") if r.strip()],
-                    "instruction": row["Micro-Script or Instruction (EN)"].strip(),
-                    "next_action": row["NextAction"].strip()
-                })
+                tag_id = row.get("TagID", "").strip()
+                if not tag_id:
+                    continue
+                    
+                # Parse triggers and required facts
+                triggers_str = row.get("Triggers (examples, ;-separated)", "")
+                triggers = [t.strip().lower() for t in triggers_str.split(";") if t.strip()]
+                
+                required_facts_str = row.get("RequiredFacts (needed before next)", "")
+                required_facts = [r.strip() for r in required_facts_str.split("|") if r.strip()]
+                
+                rules[tag_id] = {
+                    "tag_id": tag_id,
+                    "phase": row.get("Phase", "").strip(),
+                    "tag": row.get("Tag", "").strip(),
+                    "subtag": row.get("Subtag", "").strip(),
+                    "purpose": row.get("Purpose", "").strip(),
+                    "triggers": triggers,
+                    "required_facts": required_facts,
+                    "instruction": row.get("Micro-Script or Instruction (EN)", "").strip(),
+                    "next_action": row.get("NextAction", "").strip()
+                }
             print(f"Loaded {len(rules)} conversation rules from CSV")
             return rules
     except Exception as e:
         print(f"Error loading conversation flow CSV: {e}")
         return None
 
+
 def build_system_message(rules=None):
     """Build system message with dynamic rules integration"""
+    # Load rules if not provided
+    if rules is None:
+        rules = load_conversation_flow()
+    
     base_prompt = """
+You are a friendly, professional, emotionally aware virtual moving assistant. Your #1 goal is to connect the caller live to a moving representative for the best quote as soon as they agree.
+
+ROLE & PRIMARY GOAL
 You are a friendly, professional, emotionally aware virtual moving assistant.
 Your #1 goal: connect the caller live to a moving representative for the best quote as soon as they agree.
 
-Data you can rely on
-
-Lead data (pre-filled):
-Name: [lead_name]
-Phone: [lead_phone]
-Email: [lead_email]
-Origin: [lead_from_city], [lead_from_state] [lead_from_zipcode]
-Destination: [lead_to_city], [lead_to_state] [lead_to_zipcode]
-Move Date: [lead_move_date]
-Move Size: [lead_move_size]
-
-Tag Spreadsheet (provided at session start as rows with these columns):
-TagID | Phase | Tag | Subtag | Purpose | Triggers (examples, ;-separated) | RequiredFacts (needed before next) | Micro-Script or Instruction (EN) | NextAction
-You must select exactly one row per turn and use its Micro-Script (1–2 sentences max), then execute NextAction.
-
-Actions/Tools available:
-offer_live_transfer(partner_hint?), send_text_link(kind="quote"), transfer_to_dialup(), schedule_callback(time_window), mark_dnc(), crm_update(fields), check_availability(from_zip,to_zip,move_date,size_or_items).
-Conversation style & behavior
-
-Start friendly, by name: “Hi [lead_name], how are you today?” Then 1 short line: “I’m calling about your move from [lead_from_city] to [lead_to_city] on [lead_move_date] to get you the best quote.”
-
-One question at a time. Keep every reply 1–2 short sentences, then stop.
-
-Never repeat a question. Use lead data you already have. Only ask for details that are missing or unclear.
-
-Interrupt-friendly: if the caller starts speaking, stop immediately.
-
-Primary outcome: as soon as interest is warm, ask: “Want me to connect you live to a mover for the best quote?”
-
-Pricing: do not give exact prices. If asked “how much/price,” connect them to a mover who will provide a quick ballpark based on date & items.
-
-Truck-rental persuasion: If they mention U-Haul/Penske/renting a truck:
-
-Line 1: “DIY adds fuel, tolls, equipment, and your time. Full-service is one clear price and can be cheaper overall.”
-
-Line 2: “Pros handle the lifting and driving so you keep your day. Delivery is scheduled to fit your timing.”
-Then ask to connect.
-
-Access/big items/storage: Only if it helps rapport or improves the quote; otherwise skip. Ask about storage only if the caller hints at it.
-
-Routing: Anything not about getting a quote (COI, reschedule, cancel, claims, invoices) → Support (DialUp).
-
-Spanish: If Spanish is detected or requested, route to Support (DialUp) (do not handle Spanish here).
-
-Do-Not-Call: If requested, confirm once and end: “Understood—I’ve added you to Do-Not-Call and won’t contact you again. Wishing you a smooth move.”
-Slot logic (the “4 basics”)
-
-Track these basics as facts: from_zip, to_zip, move_date, size_or_items.
-
-Transfer-ready ideally has all four, but if the caller says “yes, connect me” and one is missing, ask just that one (once), then connect.
-
-If a fact fails twice (noisy line), offer to send a text link to confirm that detail.
-How to use the spreadsheet each turn
-
-Phase awareness: Start in GREET_COLLECT_CORE. When all 4 basics are filled or rental intent appears, use PERSUADE_TRANSFER. SUPPORT_ROUTING is always available for non-quote topics/DNC/Spanish.
-
-Row selection order (deterministic):
-
-If caller asks about price with missing basics → choose the PRICE_BEFORE_FACTS row.
-
-Else if any of the 4 basics is missing → choose the matching ASK_… row that collects only that fact.
-
-Else if rental/time-pressure triggers → choose a PERSUADE_… row (up to 2 lines), then the ASK_TRANSFER row.
-
-Else if they are ready/agree → choose CONFIRM_TRANSFER.
-
-Else for edge cases (legitimacy, angry, DNC, Spanish, no availability) → choose the appropriate SUPPORT_ROUTING row.
-
-Speak exactly the Micro-Script (1–2 sentences). Do not invent pricing or long explanations.
-
-Execute NextAction:
-
-COLLECT:fieldA|fieldB → ask/store just those fields (don’t re-ask filled ones).
-
-ACTION:offer_live_transfer / send_text_link / transfer_to_dialup / schedule_callback / mark_dnc / crm_update.
-
-BRANCH:if_yes->X|else->Y → follow the caller’s response.
-
-NEXT:TAGCODE → immediately follow the indicated row next turn.
-
-DROP_AFTER_INTRO → after warm intro to mover (~10s), leave unless asked to stay.
-
-END → end politely.
-Transfer & warm intro policy
-
-On yes + availability is fine, run offer_live_transfer().
-
-Give a 10-second warm intro: “Hi [Mover], I’m with [Caller]… From [from_zip] to [to_zip], moving on [move_date], [size_or_items]. They’re looking for your best quote today.”
-
-Then drop unless asked to stay.
-Guardrails (non-negotiable)
-
-No exact pricing—the mover gives ballpark after connection.
-
-No competitor bashing—frame as side-by-side via live connection.
-
-Don’t repeat questions; ask only what’s missing.
-
-Respect DNC immediately.
-CSV COLUMNS AND HOW TO USE THEM:
-
-1. Tag / Subtag:
-   - Logical identifiers for the conversation step.
-   - Subtag refines the Tag (e.g., GRT:PRIMARY).
-
-2. Purpose:
-   - Describes WHY this step exists (e.g., greeting, confirm, ask info).
-
-3. Triggers:
-   - A list of phrases or keywords (semicolon-separated).
-   - If user input matches any trigger, this row becomes eligible.
-   - Special triggers:
-       • always_on → always valid
-       • start / first turn → only for the first message
-       • tool_def → system/tool setup (not spoken)
-       • hello / hi → greeting triggers
-
-4. RequiredFacts (needed before next):
-   - A list of facts that must already be known before using this step.
-   - If any required fact is missing, skip this row.
-
-5. Micro-Script or Instruction (EN):
-   - EXACT text the AI must say to the user.
-   - Do NOT add extra words.
-   - Do NOT change wording.
-   - Say it exactly as written.
-
-6. NextAction:
-   - Defines the NEXT Tag/Subtag to go to or logical pointer.
-   - After speaking the Micro-Script, the AI should move to this next step.
+CONVERSATION FLOW RULES
+Follow these specific rules based on the conversation state:
 """
     
-    # Add dynamic rules section if rules are provided
-    rules = load_conversation_flow()
+    # Add rules from CSV if available
     if rules:
-        dynamic_section = f"\n\nCURRENTLY LOADED CONVERSATION FLOW ({len(rules)} rules):\n"
+        # Group rules by phase for better organization
+        rules_by_phase = {}
+        for rule_id, rule in rules.items():
+            phase = rule.get('phase', 'UNKNOWN')
+            if phase not in rules_by_phase:
+                rules_by_phase[phase] = []
+            rules_by_phase[phase].append(rule)
         
-        # Group rules by tag for better organization
-        rules_by_tag = {}
-        for rule in rules:
-            tag = rule['tag']
-            if tag not in rules_by_tag:
-                rules_by_tag[tag] = []
-            rules_by_tag[tag].append(rule)
-        
-        for tag, tag_rules in rules_by_tag.items():
-            dynamic_section += f"\n[{tag}]:\n"
-            for rule in tag_rules:
-                dynamic_section += f"  • {rule['subtag']}: {rule['purpose']}\n"
-                dynamic_section += f"    Triggers: {', '.join(rule['triggers'][:3])}{'...' if len(rule['triggers']) > 3 else ''}\n"
-                dynamic_section += f"    Required: {', '.join(rule['required_facts']) if rule['required_facts'] else 'None'}\n"
-                dynamic_section += f"    Next: {rule['next_action']}\n"
+        # Add rules for each phase
+        for phase, phase_rules in rules_by_phase.items():
+            if phase in ['HOUSE_RULES', 'TOOLS', 'PHASE_DEF']:
+                continue  # Skip metadata rules
+                
+            base_prompt += f"\n\n{phase.upper()} PHASE:\n"
+            for rule in phase_rules:
+                base_prompt += f"- {rule['tag_id']}: {rule['instruction']}\n"
+                if rule['triggers']:
+                    base_prompt += f"  Triggers: {', '.join(rule['triggers'][:3])}{'...' if len(rule['triggers']) > 3 else ''}\n"
+                if rule['required_facts']:
+                    base_prompt += f"  Required: {', '.join(rule['required_facts'])}\n"
+                base_prompt += f"  Next: {rule['next_action']}\n"
     
-    else:
-        dynamic_section = "\n\nNo conversation rules loaded yet."
-    
+    # Add general rules
     general_rules = """
-GENERAL RULES:
-- Only speak using the Micro-Script.
-- Never jump to a step unless Triggers match and RequiredFacts are satisfied.
-- Ask ONE question at a time if the micro-script is a question.
-- After speaking, STOP and wait for user response.
-- Use user response to:
-    • Capture facts (name, date, etc.)
-    • Decide which row's triggers match next.
-- If multiple rows are valid, pick the most specific match.
-- If no rows match, politely ask the user to clarify.
 
-REMEMBER:
-The CSV is your SOURCE OF TRUTH.
-Never invent new questions.
-Never skip steps unless NextAction says so.
+CONVERSATION STYLE & TURN RULES
+- Speak in 1-2 short sentences, then stop. If the caller starts speaking, stop immediately.
+- Never repeat a question. Only ask for details that are missing or unclear.
+- As soon as interest is warm, ask: "Want me to connect you live to a mover for the best quote?"
+- Pricing: never give exact prices yourself. If asked "how much/price," connect to a mover.
+
+FACTS TO COLLECT
+Track these facts: from_zip, to_zip, move_date, move_size.
+"Transfer-ready" requires all four basics.
+
+ROW SELECTION ALGORITHM
+Given the latest user utterance and current facts:
+1) Check for hard routes (DNC, Spanish, Support)
+2) Handle price questions before basics are collected
+3) Collect missing basics one at a time
+4) Persuade and close when appropriate
+5) Transfer when caller agrees
+
+MICRO-SCRIPT BEHAVIOR
+- Speak exactly the instruction from the selected rule
+- Replace placeholders with known values
+- Max 1-2 sentences
+
+NEXTACTION PARSING
+- COLLECT:x|y|z → ask/store those fields
+- ACTION:tool_name → execute the specified tool
+- NEXT:TAGCODE → move to that tag
+- BRANCH:if_yes->X|else->Y → follow caller's reply
+- END → end conversation
+
+STRICT OUTPUT
+Always follow the rules precisely. Do not invent new questions or skip steps.
+
+MASTER INSTRUCTIONS + QA TELEMETRY (v2.5)
+
+ROLE & PRIMARY GOAL
+You are a friendly, professional, emotionally aware virtual moving assistant calling on behalf of [brand_name].
+PRIMARY GOAL: connect the caller live to a moving representative for the best quote as soon as they agree. Keep talk minimal (1–2 short sentences per turn).
+
+RELIABLE INPUTS (DO NOT RE-ASK IF PRESENT UNLESS UNCLEAR)
+Use only these variables (exact names):
+lead_name, lead_email, lead_phone,
+lead_from_address, lead_from_zipcode, lead_from_city, lead_from_area, lead_from_state, lead_from_unit, lead_from_access_type,
+lead_to_address, lead_to_zipcode, lead_to_city, lead_to_area, lead_to_state, lead_to_unit, lead_to_access_type,
+lead_distance, origin_floor, destination_floor,
+move_date, move_size,
+lead_status, call_disposition, lead_source, discount_code, is_verified, lead_type, package_type, is_mortgageloan, moving_type, ref_tag, token, access_token,
+truck_rental, call_transfer,
+live_transfer_company_name, truck_rental_company_name, call_transfer_company_name,
+brand_name.
+
+SPREADSHEET (INTENT CATALOG)
+Columns: TagID | Phase | Tag | Subtag | Purpose | Triggers (examples, ;-separated) | RequiredFacts (needed before next) | Micro-Script or Instruction (EN) | NextAction
+CONTRACT: Each turn select exactly ONE row, speak its Micro-Script (1–2 short sentences max), then execute its NextAction.
+Rows with Phase=HOUSE_RULES / TOOLS / PHASE_DEF are metadata—load/obey, do not speak.
+
+TOOLS (SILENT CALLS WHEN NextAction SAYS SO)
+offer_live_transfer(company_name?) → {status}          // No warm intro; assistant exits immediately
+offer_truck_rental_transfer(company_name?) → {status}  // No warm intro; assistant exits immediately
+offer_call_transfer(company_name?) → {status}          // No warm intro; assistant exits immediately
+transfer_to_dialup() → {status}
+schedule_callback(time_window) → {status}
+mark_dnc() → {status}
+crm_update(fields) → {status}                          // Use EXACT DB variable names
+check_availability(lead_from_zipcode,lead_to_zipcode,move_date,move_size) → {status: green|yellow|red}
+lookup_zip_options(city,state) → {zips: string[]}     // Return ≤5 ZIPs for that city+state
+
+CONVERSATION STYLE & TURN RULES (ULTRA-SHORT)
+• Start with brand and name. If brand_name missing, say “our moving support team”.
+Example first line: “Hi [lead_name], this is [brand_name].”
+• Then one sentence reason: “I’m calling about your move from [lead_from_city] to [lead_to_city] on [move_date] to get you the best quote.”
+• 1–2 short sentences per turn, then STOP. If the caller starts speaking, STOP immediately (barge-in).
+• Never repeat a question. Ask ONLY for missing or unclear details.
+• As soon as interest is warm, ask: “Want me to connect you live to a mover for the best quote?”
+• Pricing: NEVER provide exact prices. If asked “how much/price,” connect to a mover for a quick ballpark (based on date/items).
+• Truck-rental persuasion (max two short lines), then ask to connect:
+1) “DIY adds fuel, tolls, equipment, and your time. Full-service is one clear price and can be cheaper overall.”
+2) “Pros handle the lifting and driving so you keep your day. Delivery is scheduled to fit your timing.”
+• Access/big items/storage: ask only if it clearly helps rapport or improves the quote. Only ask storage if hinted by caller.
+• Routing: anything not about getting a quote (COI, reschedule, cancel, claims, invoices) → Support (DialUp).
+• Spanish detected/requested → Support (DialUp); do not handle Spanish here.
+• DNC: if requested, confirm and end: “Understood—I’ve added you to Do-Not-Call and won’t contact you again. Wishing you a smooth move.”
+
+OUTBOUND MODE — PREFILLED FACTS (SKIP DISCOVERY)
+• If all 4 basics present at start (lead_from_zipcode, lead_to_zipcode, move_date, move_size) AND at least one company name for transfer is present:
+1) Branded greeting (1 sentence).
+2) SHORT RECONFIRM (1 sentence): “I have you from [lead_from_city], [lead_from_state] [lead_from_zipcode] to [lead_to_city], [lead_to_state] [lead_to_zipcode] on [move_date], size [move_size]—is that correct?”
+3) If yes OR caller makes a minor correction (capture just that field, crm_update), IMMEDIATELY ask to connect and run priority transfer (T_ANY).
+• Do NOT re-ask basics unless a field is missing or caller corrects it.
+
+STATE & SLOT LOGIC (THE “4 BASICS”)
+Track/update: lead_from_zipcode, lead_to_zipcode, move_date, move_size.
+• Transfer-ready ideally has all four. If caller says “yes, connect me” and ONE is missing, ask just that one (once), then transfer.
+• City→ZIP: If caller gives city (not ZIP), first confirm state, call lookup_zip_options(city,state), present ≤5 ZIP choices, capture one, set lead_*_zipcode. A 5-digit ZIP provided by caller is confirmed.
+• If a fact fails twice (unclear/noisy), DO NOT guess—flag confusion and continue per spreadsheet.
+
+TRIGGER NORMALIZATION (FOR “Triggers” COLUMN)
+• Lowercase; strip punctuation/spaces.
+• Each trigger (split by ;) matches by substring or close variant (e.g., “u-haul” ≈ “u haul/uhaul/u-haul”; “how much” ≈ “how much is it”).
+• Synonyms:
+price = price; how much; cost; estimate
+spanish = español; spanish; habla español; prefiero español
+rental = u-haul; penske; budget truck; truck rental; rent a truck; box truck
+• If a Triggers cell begins with “mentions:”, treat those entries as weak rapport signals (not selection drivers).
+
+PHASE USAGE
+• Start in GREET_COLLECT_CORE until the 4 basics are filled (unless Outbound Mode allows RECONFIRM→TRANSFER).
+• Enter PERSUADE_TRANSFER when all basics are filled OR rental intent appears.
+• SUPPORT_ROUTING is always available (non-quote, DNC, Spanish, capacity issue, escalation).
+
+ROW SELECTION (DETERMINISTIC; PICK EXACTLY ONE)
+1) Hard routes: DNC → S8; Spanish → S9; non-quote support → S2.
+2) Price before basics: price triggers + any basic missing → P3.
+3) Collect missing basics (one at a time): zips → G3/C1/C2 (use city→ZIP flow if needed); date → G4/C3; size → G5/C4.
+4) Persuade/close: rental → P1/P2 then P4; warm interest → P4.
+5) Transfer: on “yes” → T_ANY (priority routing).
+6) Capacity/callback: T4 or S3.
+7) Legitimacy/angry: S4 then P4; or S5 then S6.
+8) Edge: recap or one-more-fact rows (if defined).
+TIE-BREAKER: Hard routes > Collect basics > Persuade > Ask to connect > Transfer > Legitimacy/Calm > Helpers.
+
+TRANSFER POLICY (NO WARM INTRO; AI EXITS ON TRANSFER)
+• Immediate transfer; assistant exits the moment the transfer starts.
+• Priority order: Live Transfer → Truck Retnal Transfer → Call Transfer → Support Transfer.
+• Use only these session variables; DO NOT ask caller for company names:
+live_transfer_company_name (for Live Transfer)
+truck_rental_company_name (for Truck Retnal Transfer)
+call_transfer_company_name (for Call Transfer)
+• If a company name for a type is missing/empty, SKIP that type and fall to the next.
+
+COMPLIANCE & SAFETY GUARDRAILS
+• NEVER invent numbers, fees, discounts, dates, ZIPs, availability, partner names, or counts. Use only lead data, caller statements, or tool/DB outputs.
+• No competitor bashing; offer live connection for side-by-side.
+• Do not repeat questions; ask only what’s missing.
+• Respect DNC immediately.
+• Privacy: do not expose or guess sensitive data.
+
+STRICT OUTPUT — RETURN THIS JSON EVERY TURN (COMPACT; NO CHAIN-OF-THOUGHT)
+{
+selected_row: "TagID",
+say_ssml: "<speak>One or two short sentences.<break time='200ms'/></speak>",
+collected_facts: { /* ONLY new fields this turn; EXACT DB names */ },
+actions: [ { "name": "tool_name", "args": { } } ],
+reasoning_brief: "≤25 words; triggers matched; facts missing/filled; rule applied.",
+triggers_matched: ["normalized trigger", "..."],
+facts_before: ["which basics were missing before"],
+facts_after: ["which basics are filled now"],
+confidence: 0.0,
+disposition: {
+set_this_turn: true,
+value: "Live Transfer"  // or your exact labels; null if none this turn
+},
+qa_feedback: {
+confusion_flags: [
+// zero or more from this controlled set:
+// "asr_unclear", "not_matching_use_case", "no_disposition_found",
+// "missing_required_fact", "city_without_state", "zip_ambiguous",
+// "policy_price_attempted", "unsupported_language", "tool_error"
+],
+zip_options_offered: ["78701","78702"],   // include only when city→ZIP used
+improvement_suggestion: "Short, specific next step; e.g., 'Proceed to transfer now.'"
+}
+}
+
+FIELD RULES
+• selected_row: exact TagID selected from the sheet.
+• say_ssml: 1–2 short sentences, TTS-ready; brief <break> allowed.
+• collected_facts: ONLY newly confirmed fields this turn (e.g., "lead_from_zipcode":"78701"). Use EXACT DB names.
+• actions: tool calls to run IN ORDER (e.g., crm_update BEFORE transfer when you collected a fact).
+• reasoning_brief: NO chain-of-thought—just what matched/which rule.
+• triggers_matched: normalized strings from the Triggers column.
+• facts_before / facts_after: which of the 4 basics were missing/filled before vs after.
+• confidence: 0–1 subjective confidence in the row selection.
+• disposition: if any DISP: fired this turn, set set_this_turn=true and include the EXACT label (e.g., "Live Transfer", "Truck Retnal Transfer", "Call Transfer", "Support Transfer", "DNC", "Not Interested", etc.). Else value=null.
+• qa_feedback.confusion_flags: use ONLY the controlled set. Add "zip_ambiguous" if multiple ZIPs were offered. Add "city_without_state" if state still unknown after a city is given.
+• qa_feedback.improvement_suggestion: one short actionable tip for the NEXT turn (avoid generic advice).
+
+FAILURE & EDGE HANDLING
+• If no row matches:
+- If any basic is missing → select the correct ASK_… row.
+- Else → select ASK_TRANSFER (P4).
+- Add confusion_flags: ["not_matching_use_case"].
+• If you can’t confidently normalize a number/date/city/ZIP:
+- Do NOT guess; add "asr_unclear" or "zip_ambiguous" and ask minimally via the correct ASK_… row.
+• If a tool errors or is unavailable:
+- Add "tool_error"; fall back to the next priority transfer type or Support.
+
+NUMERIC / FACTUAL INTEGRITY (NON-NEGOTIABLE)
+• Never fabricate pricing, fees, discounts, dates, ZIPs, availability, partner names, or counts.
+• Use only lead data, caller words, or tool/DB outputs. If unknown, ask once via the correct ASK_… row or mark a confusion flag.
+
+OUTBOUND FIRST-TURN EXAMPLE (RECONFIRM + TRANSFER)
+Example JSON when basics are present:
+{
+selected_row: "G2_RECONFIRM_SHORT",
+say_ssml: "<speak>Hi [lead_name], this is [brand_name]. I have you from [lead_from_city], [lead_from_state] [lead_from_zipcode] to [lead_to_city], [lead_to_state] [lead_to_zipcode] on [move_date], size [move_size]—is that correct?</speak>",
+collected_facts: {},
+actions: [],
+reasoning_brief: "Outbound reconfirm; basics present; proceed to ask_transfer.",
+triggers_matched: ["start"],
+facts_before: [],
+facts_after: ["lead_from_zipcode","lead_to_zipcode","move_date","move_size"],
+confidence: 0.92,
+disposition: { "set_this_turn": false, "value": null },
+qa_feedback: { "confusion_flags": [], "improvement_suggestion": "On 'yes', ask to connect and run priority transfer." }
+}
+"zip_options_offered": ["78701","78702"],   // include only when city→ZIP used
+"improvement_suggestion": "Short, specific coaching for next turn; e.g., 'Collect move_date next then offer transfer.'"
+}
+}
+
+This gives you tight control, rich QA telemetry, and zero guesswork—while keeping turns short and transfer-focused.
 """
     
-    return base_prompt + dynamic_section + general_rules
-
-# Usage
-rules = load_conversation_flow("csvFile.csv")
-system_message = build_system_message(rules)
-print(system_message)
+    return base_prompt + general_rules
 
 app = Quart(__name__)
 app.secret_key = "ABCDEFGHIJKLMNOPQRST"
@@ -356,6 +444,14 @@ def initialize_database():
                     INDEX (conversation_id)
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS structured_responses (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    lead_id TEXT NOT NULL,
+                    response_data TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             conn.commit()
             print("Database initialized successfully")
         except Exception as e:
@@ -406,6 +502,7 @@ async def update_lead_after_call(lead_id, call_uuid):
     Only updates if any required fields are missing in the lead record.
     """
     try:
+        print(" i'm here ")
         # 1. Check if lead exists and get current data
         conn = get_db_connection()
         if not conn:
@@ -756,42 +853,43 @@ def check_disposition(transcript, lead_timezone, ai_agent_name):
     elif re.search(r"\b(human)\b", transcript_lower):
         return 9, "I'll transfer you to a human agent who can better assist you.", None
 
-    elif re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
-        return 2, "No worries, sorry to bother you. Have a great day", None
+    # elif re.search(r"\b(don'?t call|do not call|not to call|take me off)\b", transcript_lower):
+    #     return 2, "No worries, sorry to bother you. Have a great day", None
     
-    # Pattern 2: Wrong number
-    elif re.search(r"\b(wrong number|invalid number|incorrect number)\b", transcript_lower):
-        return 7, "No worries, sorry to bother you. Have a great day", None
+    # # Pattern 2: Wrong number
+    # elif re.search(r"\b(wrong number|invalid number|incorrect number)\b", transcript_lower):
+    #     return 7, "No worries, sorry to bother you. Have a great day", None
     
-    # Pattern 3: Not interested
-    elif re.search(r"\b(not looking to move|not looking|not interested)\b", transcript_lower):
-        return 3, "No worries, sorry to bother you. Have a great day", None
+    # # Pattern 3: Not interested
+    # elif re.search(r"\b(not looking to move|not looking|not interested)\b", transcript_lower):
+    #     return 3, "No worries, sorry to bother you. Have a great day", None
     
     # Pattern 4: Not available
-    elif re.search(r"\b(hang up or press|reached the maximum time allowed to make your recording|at the tone|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
+    #elif re.search(r"\b(hang up or press|reached the maximum time allowed to make your recording|at the tone|are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
         # Check if it's a busy/call me later pattern that might have a datetime
-        if re.search(r"\b(are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
-            followup_datetime = get_followup_datetime(transcript_lower, lead_timezone)
-            print(f'🎤 Lead Timezone: {lead_timezone}')
-            print(f'🎤 Followup DateTime: {followup_datetime}')
-            if followup_datetime:
-                return 4, "I will call you later. Nice to talk with you. Have a great day.", followup_datetime
+    if re.search(r"\b(are busy|am busy|busy|call me later|call me|call me at)\b", transcript_lower):
+        followup_datetime = get_followup_datetime(transcript_lower, lead_timezone)
+        print(f'🎤 Lead Timezone: {lead_timezone}')
+        print(f'🎤 Followup DateTime: {followup_datetime}')
+        # if followup_datetime:
+        #     return 4, "I will call you later. Nice to talk with you. Have a great day.", followup_datetime
         # Default response for voicemail or no datetime found
-        return 6, "I will call you later. Nice to talk with you. Have a great day.", None
+    #    return 6, "I will call you later. Nice to talk with you. Have a great day.", None
 
     elif re.search(r"\b(Cannot accept any messages at this time|trying to reach is unavailable|call you back as soon as possible|automated voice messaging system|please record your message|record your message|voicemail|voice mail|leave your message|please leave the name and number|please leave a name and number|leave me a message|leave a message|recording|leave me your|will get back to you|leave me your|the person you are trying to reach is unavailable|please leave a message after the tone|your call is being forwarded|the subscriber you have dialed|not available|has a voice mailbox|at the tone|after the tone)\b", transcript_lower):
         return 11, f"Hi I am jason calling from {ai_agent_name} Move regarding your recent moving request. Please call us back at 15308050957. Thank you.", None
     
     # Pattern 5: Already booked
-    elif re.search(r"\b(already booked|booked)\b", transcript_lower):
-        return 8, "No worries, sorry to bother you. Have a great day", None
+    # elif re.search(r"\b(already booked|booked)\b", transcript_lower):
+    #     return 8, "No worries, sorry to bother you. Have a great day", None
     
-    # Pattern 6: Goodbye
-    elif re.search(r"\b(goodbye|good bye|take care|see you)\b", transcript_lower):
-        return 6, "Nice to talk with you. Have a great day", None
+    # # Pattern 6: Goodbye
+    # elif re.search(r"\b(goodbye|good bye|take care|see you)\b", transcript_lower):
+    #     return 6, "Nice to talk with you. Have a great day", None
     
     # Default disposition
-    return 6, None, None
+    #return 6, None, None
+    None
 
 # NEW: Function to check AI speech for moving-related keywords
 def check_ai_disposition(transcript):
@@ -875,6 +973,301 @@ async def create_response_with_completion_instructions(openai_ws, instructions, 
     }
     await openai_ws.send(json.dumps(response_create))
 
+
+async def handle_response_done(response, plivo_ws, openai_ws, lead_id):
+    """
+    Handle response.done events from OpenAI and add structured data.
+    """
+    try:
+        # Extract the transcript from the response
+        transcript = ""
+        if 'response' in response and 'output' in response['response']:
+            for item in response['response']['output']:
+                if item.get('type') == 'message' and 'content' in item:
+                    for content in item['content']:
+                        if content.get('type') == 'audio' and 'transcript' in content:
+                            transcript = content['transcript']
+                        elif content.get('type') == 'text' and 'text' in content:
+                            transcript = content['text']
+        
+        # Create structured response based on the transcript using OpenAI
+        structured_response = await create_structured_response_with_openai(transcript)
+        # Store the structured response in the database
+        await store_structured_response(lead_id, structured_response)
+        # Log the structured response
+        print("Structured response:", json.dumps(structured_response, indent=2))
+        
+        # If there are actions to perform, handle them
+        if structured_response.get("actions"):
+            await handle_actions(structured_response["actions"], openai_ws)
+        
+        # The audio response is already being handled by response.audio.delta events
+        # So we don't need to send additional audio here
+        
+    except Exception as e:
+        print(f"Error handling response.done: {e}")
+
+async def store_structured_response(lead_id, structured_response):
+    """
+    Store the structured response in the database with the lead_id.
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Convert the structured response to a JSON string
+        response_json = json.dumps(structured_response)
+        
+        # Insert the structured response into the database
+        query = """
+                INSERT INTO structured_responses (lead_id, response_data)
+                VALUES (%s, %s)
+            """
+        cursor.execute(query, (lead_id, response_json))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"Stored structured response with lead_id: {lead_id}")
+        
+    except Exception as e:
+        print(f"Error storing structured response: {e}")
+
+
+async def create_structured_response_with_openai(transcript):
+    """
+    Use OpenAI to analyze the transcript and create a structured response.
+    """
+    try:
+        # Define the prompt for OpenAI
+        prompt = f"""
+        Analyze the following transcript and generate a structured response in JSON format:
+        
+        Transcript: "{transcript}"
+        
+        Generate a JSON response with the following structure:
+        {{
+            "selected_row": "determine the appropriate row based on the context",
+            "say_ssml": "convert the response to SSML format",
+            "collected_facts": {{}},
+            "actions": [
+                {{"name": "action_name", "args": {{"key": "value"}}}}
+            ],
+            "reasoning_brief": "brief reasoning about the response",
+            "triggers_matched": ["list of triggers matched"],
+            "facts_before": ["list of facts known before this response"],
+            "facts_after": ["list of facts known after this response"],
+            "confidence": 0.86,
+            "disposition": {{"set_this_turn": false, "value": null}},
+            "qa_feedback": {{
+                "confusion_flags": ["list of confusion flags"],
+                "zip_options_offered": ["list of ZIP options if applicable"],
+                "improvement_suggestion": "suggestion for improvement"
+            }}
+        }}
+        
+        Only return the JSON response, nothing else.
+        """
+        
+        # Use requests to make a direct API call to OpenAI
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {OPENAI_API_KEY}"
+            }
+            
+            data = {
+                "model": "gpt-4",
+                "messages": [
+                    {"role": "system", "content": "You are an AI assistant that analyzes conversation transcripts and generates structured JSON responses."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.3
+            }
+            
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                content = response_data['choices'][0]['message']['content'].strip()
+                print("Successfully used requests to call OpenAI API")
+            else:
+                print(f"Error calling OpenAI API: {response.status_code} - {response.text}")
+                # Fallback to a rule-based approach if OpenAI API is not available
+                print("OpenAI API not available, using rule-based approach")
+                return create_rule_based_structured_response(transcript)
+            
+        except Exception as e:
+            print(f"Error with requests to OpenAI API: {e}")
+            # Fallback to a rule-based approach if OpenAI API is not available
+            print("OpenAI API not available, using rule-based approach")
+            return create_rule_based_structured_response(transcript)
+        
+        # Try to extract JSON if it's wrapped in code blocks
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        structured_response = json.loads(content)
+        
+        # Ensure required fields are present
+        if "selected_row" not in structured_response:
+            structured_response["selected_row"] = "G3C"
+        if "say_ssml" not in structured_response:
+            structured_response["say_ssml"] = f"<speak>{transcript}</speak>"
+        if "collected_facts" not in structured_response:
+            structured_response["collected_facts"] = {}
+        if "actions" not in structured_response:
+            structured_response["actions"] = []
+        if "reasoning_brief" not in structured_response:
+            structured_response["reasoning_brief"] = "No reasoning provided"
+        if "triggers_matched" not in structured_response:
+            structured_response["triggers_matched"] = []
+        if "facts_before" not in structured_response:
+            structured_response["facts_before"] = []
+        if "facts_after" not in structured_response:
+            structured_response["facts_after"] = []
+        if "confidence" not in structured_response:
+            structured_response["confidence"] = 0.86
+        if "disposition" not in structured_response:
+            structured_response["disposition"] = {"set_this_turn": False, "value": None}
+        if "qa_feedback" not in structured_response:
+            structured_response["qa_feedback"] = {
+                "confusion_flags": [],
+                "improvement_suggestion": ""
+            }
+        
+        return structured_response
+        
+    except Exception as e:
+        print(f"Error creating structured response with OpenAI: {e}")
+        
+        # Return a rule-based structured response if there's an error
+        return create_rule_based_structured_response(transcript)
+
+def create_rule_based_structured_response(transcript):
+    """
+    Create a structured response based on rules as a fallback.
+    """
+    # Default structured response
+    structured_response = {
+        "selected_row": "G3C",
+        "say_ssml": f"<speak>{transcript}</speak>",
+        "collected_facts": {},
+        "actions": [],
+        "reasoning_brief": "",
+        "triggers_matched": [],
+        "facts_before": [],
+        "facts_after": [],
+        "confidence": 0.86,
+        "disposition": {"set_this_turn": False, "value": None},
+        "qa_feedback": {
+            "confusion_flags": [],
+            "improvement_suggestion": ""
+        }
+    }
+    
+    # Check if the transcript is asking for ZIP codes
+    if "ZIP" in transcript and "from" in transcript and "to" in transcript:
+        structured_response["reasoning_brief"] = "Asking for from and to ZIP codes"
+        structured_response["triggers_matched"] = ["initial_greeting"]
+        structured_response["facts_before"] = []
+        structured_response["facts_after"] = ["lead_from_zipcode", "lead_to_zipcode"]
+        structured_response["qa_feedback"]["improvement_suggestion"] = "After ZIP collection, ask for move date and size"
+    
+    # Check if the transcript is asking for city/state
+    elif "city" in transcript and "state" in transcript:
+        structured_response["reasoning_brief"] = "Offering city/state as alternative to ZIP codes"
+        structured_response["triggers_matched"] = ["initial_greeting"]
+        structured_response["facts_before"] = []
+        structured_response["facts_after"] = ["lead_from_city", "lead_to_city"]
+        structured_response["qa_feedback"]["improvement_suggestion"] = "After city/state collection, ask for move date and size"
+    
+    # Check if the transcript mentions a specific city
+    elif any(city in transcript for city in ["Austin", "New York", "Los Angeles", "Chicago", "Houston"]):
+        # Extract the city mentioned
+        mentioned_city = None
+        for city in ["Austin", "New York", "Los Angeles", "Chicago", "Houston"]:
+            if city in transcript:
+                mentioned_city = city
+                break
+        
+        if mentioned_city:
+            # Define ZIP options for each city
+            zip_options = {
+                "Austin": ["78701", "78702", "78703"],
+                "New York": ["10001", "10002", "10003"],
+                "Los Angeles": ["90001", "90002", "90003"],
+                "Chicago": ["60601", "60602", "60603"],
+                "Houston": ["77001", "77002", "77003"]
+            }
+            
+            state = {
+                "Austin": "TX",
+                "New York": "NY",
+                "Los Angeles": "CA",
+                "Chicago": "IL",
+                "Houston": "TX"
+            }
+            
+            structured_response["selected_row"] = "G3C"
+            structured_response["say_ssml"] = f"<speak>Here are ZIP options for {mentioned_city}, {state[mentioned_city]}: {', '.join(zip_options[mentioned_city][:2])}. Which one matches your address?</speak>"
+            structured_response["actions"] = [
+                {"name": "lookup_zip_options", "args": {"city": mentioned_city, "state": state[mentioned_city]}}
+            ]
+            structured_response["reasoning_brief"] = f"From city given; gathered state; offering ZIP options for {mentioned_city}."
+            structured_response["triggers_matched"] = ["from_city"]
+            structured_response["facts_before"] = ["lead_from_zipcode", "lead_to_zipcode", "move_date", "move_size"]
+            structured_response["facts_after"] = ["lead_to_zipcode", "move_date", "move_size"]
+            structured_response["qa_feedback"]["confusion_flags"] = ["zip_ambiguous"]
+            structured_response["qa_feedback"]["zip_options_offered"] = zip_options[mentioned_city][:2]
+            structured_response["qa_feedback"]["improvement_suggestion"] = "After ZIP selection, capture move_date and ask to connect."
+    
+    return structured_response
+
+async def handle_actions(actions, openai_ws):
+    """
+    Handle actions specified in the structured response.
+    """
+    for action in actions:
+        if action.get("name") == "lookup_zip_options":
+            # Extract city and state from args
+            args = action.get("args", {})
+            city = args.get("city", "")
+            state = args.get("state", "")
+            
+            if city and state:
+                # Create a function call to lookup ZIP options
+                function_call = {
+                    "type": "conversation.item.create",
+                    "item": {
+                        "type": "function_call",
+                        "id": f"func_lookup_zip_{asyncio.current_task().get_name()}",
+                        "call_id": f"call_lookup_zip_{asyncio.current_task().get_name()}",
+                        "name": "lookup_zip_options",
+                        "arguments": json.dumps({"city": city, "state": state})
+                    }
+                }
+                
+                await openai_ws.send(json.dumps(function_call))
+                
+                # Create a response generation request
+                generate_response = {
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["text", "audio"],
+                        "instructions": f"Look up ZIP options for {city}, {state} and present them to the user."
+                    }
+                }
+                
+                await openai_ws.send(json.dumps(generate_response))
+
+
 # Updated send_Session_update function
 async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name):
     SYSTEM_MESSAGE = build_system_message()
@@ -902,7 +1295,20 @@ async def send_Session_update(openai_ws, prompt_text, voice_name, ai_agent_name)
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": 1200  # Increase from default (500)
                 },
-            "tools": [],
+            "tools": [{
+                    "type": "function",
+                    "name": "lookup_zip_options",
+                    "description": "Look up ZIP code options for a city and state",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "city": { "type": "string", "description": "the city name" },
+                            "state": { "type": "string", "description": "the state abbreviation" }
+                        },
+                        "required": ["city", "state"]
+                    }
+                }
+            ],
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
             "voice": voice_name,
@@ -999,7 +1405,7 @@ async def home():
                 
                 if lead_data and lead_data['type'] == "outbound":
                     if lead_data.get('name'):
-                        audio_message = f"HI {ai_agent_name}. how are you today?"
+                        audio_message = f"HI, {lead_data['name']}. how are you?"
                     else:
                         audio_message = f"HI, This is jason from {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
                        
@@ -1396,7 +1802,7 @@ async def handle_message():
             not conversation_state.get('transfer_initiated', False)):  # Check if transfer is in progress
             print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
             conversation_state['waiting_for_user'] = True
-            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
+            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(10))
             # Schedule the timeout handler
             async def timeout_wrapper():
                 try:
@@ -1498,6 +1904,7 @@ async def receive_from_plivo(plivo_ws, openai_ws,conversation_state):
 async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, handle_timeout, ai_agent_name):
     try:
         response = json.loads(message)
+        #print('Full response from OpenAI:', json.dumps(response, indent=2))  # Print full response
         event_type = response.get('type', 'unknown')
         
         # Log all event types for debugging (except audio deltas to reduce noise)
@@ -1895,7 +2302,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
         # Handle response completion
         elif event_type == 'response.done':
-
+            await handle_response_done(response, plivo_ws, openai_ws, conversation_state['lead_id'])
              # Reset the "Are you there?" flag when response is completely done
             if conversation_state.get('is_are_you_there_response', False):
                 print(f"[DEBUG] 'Are you there?' response completed")
@@ -2281,7 +2688,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
                             
                             print("[TIMEOUT] ⏰ Starting 5-second timeout timer")
                             conversation_state['waiting_for_user'] = True
-                            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(5))
+                            conversation_state['timeout_task'] = asyncio.create_task(asyncio.sleep(10))
                             
                             # Schedule the timeout handler
                             async def timeout_wrapper():
