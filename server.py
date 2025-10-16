@@ -2227,7 +2227,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state, 
             
         # Handle response completion
         elif event_type == 'response.done':
-            await handle_response_done(response, plivo_ws, openai_ws, conversation_state['lead_id'])
+            #await handle_response_done(response, plivo_ws, openai_ws, conversation_state['lead_id'])
              # Reset the "Are you there?" flag when response is completely done
             if conversation_state.get('is_are_you_there_response', False):
                 print(f"[DEBUG] 'Are you there?' response completed")
