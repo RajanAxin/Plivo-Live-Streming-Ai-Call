@@ -838,11 +838,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             else:
                 print("Disposition status is empty or not set")
 
-            updated = await update_lead_from_collected_facts(lead_id,lead_phone, to_number, collected_facts)
-            if updated:
-                print(f"[LEAD_UPDATE] Lead {lead_id} updated successfully")
-            else:
-                print(f"[LEAD_UPDATE] No updates made to lead {lead_id}")
+            if len(collected_facts) > 0:
+                updated = await update_lead_from_collected_facts(lead_id,lead_phone, to_number, collected_facts)
+                if updated:
+                    print(f"[LEAD_UPDATE] Lead {lead_id} updated successfully")
+                else:
+                    print(f"[LEAD_UPDATE] No updates made to lead {lead_id}")
             if response['name'] == 'calc_sum':
                 output = function_call_output(json.loads(response['arguments']), response['item_id'], response['call_id'])
                 await openai_ws.send(json.dumps(output))
