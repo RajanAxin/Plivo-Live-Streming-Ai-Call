@@ -838,7 +838,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             else:
                 print("Disposition status is empty or not set")
 
-            if len(collected_facts) > 0:
+            if collected_facts:
                 updated = await update_lead_from_collected_facts(lead_id,lead_phone, to_number, collected_facts)
                 if updated:
                     print(f"[LEAD_UPDATE] Lead {lead_id} updated successfully")
