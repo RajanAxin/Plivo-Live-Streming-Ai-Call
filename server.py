@@ -282,6 +282,7 @@ async def home():
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
+    t_lead_id = lead_data['t_lead_id'] if lead_data else 0
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     
     # Note: We're no longer storing the prompt in a global dictionary
@@ -296,6 +297,7 @@ async def home():
     f"&amp;To={to_number}"
     f"&amp;lead_phone={lead_phone}"
     f"&amp;lead_id={lead_id}"
+    f"&amp;t_lead_id={t_lead_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
     f"&amp;ai_agent_id={ai_agent_id}"  # Add ai_agent_id to the URL
@@ -325,6 +327,7 @@ async def test():
     lead_phone = request.args.get("lead_phone_number")
     user_id = request.args.get("user_id")
     lead_call_id = request.args.get("lead_call_id")
+    t_lead_id = request.args.get("t_lead_id")
     call_uuid = request.args.get("call_uuid")
     to_number = (await request.form).get('To') or request.args.get('To')
     print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
@@ -822,7 +825,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             lead_id = conversation_state['lead_id']
             lead_phone = conversation_state['lead_phone']
             to_number = conversation_state['to_number']
-
+            t_lead_id = conversation_state['t_lead_id']
             if disposition_status and disposition_status.get('value'):
                 if disposition_status['value'] == 'Live Transfer':
                     # Do something for Live Transfer
@@ -839,7 +842,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 print("Disposition status is empty or not set")
 
             if collected_facts:
-                updated = await update_lead_from_collected_facts(lead_id,lead_phone, to_number, collected_facts)
+                updated = await update_lead_from_collected_facts(lead_id,t_lead_id,lead_phone, to_number, collected_facts)
                 if updated:
                     print(f"[LEAD_UPDATE] Lead {lead_id} updated successfully")
                 else:
@@ -1003,16 +1006,17 @@ def function_call_output(arg, item_id, call_id):
     }
     return conversation_item
 
-async def update_lead_from_collected_facts(lead_id, lead_phone, to_number, collected_facts):
+async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_number, collected_facts):
     try:
         print(f"[DEBUG] Starting update for lead_id: {lead_id}")
+        print(f"[DEBUG] t_lead_id: {t_lead_id}")
         print(f"[DEBUG] Collected facts: {collected_facts}")
         
         api_update_data = {}
         update_data = {}
         
         # Add lead_id to update_data
-        api_update_data['lead_id'] = lead_id
+        api_update_data['lead_id'] = t_lead_id
         
         # Map collected_facts to your database columns
         if collected_facts.get('lead_name', ''):
