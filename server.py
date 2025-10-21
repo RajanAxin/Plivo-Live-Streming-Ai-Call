@@ -284,6 +284,7 @@ async def home():
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
+    print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     
     # Note: We're no longer storing the prompt in a global dictionary
     
@@ -327,7 +328,6 @@ async def test():
     lead_phone = request.args.get("lead_phone_number")
     user_id = request.args.get("user_id")
     lead_call_id = request.args.get("lead_call_id")
-    t_lead_id = request.args.get("t_lead_id")
     call_uuid = request.args.get("call_uuid")
     to_number = (await request.form).get('To') or request.args.get('To')
     print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
@@ -343,7 +343,7 @@ async def test():
                     cursor = conn.cursor(dictionary=True, buffered=True)
                     cursor.execute("""
                         SELECT * FROM `leads` 
-                        WHERE t_lead_id = %s 
+                        WHERE lead_id = %s 
                         ORDER BY lead_id DESC 
                         LIMIT 1
                     """, (lead_id,))
@@ -430,6 +430,7 @@ async def handle_message():
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
     lead_id = websocket.args.get('lead_id', 'unknown')
+    t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
     lead_phone = websocket.args.get('lead_phone', 'unknown')
     print('audio_message', audio_message)
@@ -444,6 +445,7 @@ async def handle_message():
         'in_ai_response': False,
         'current_ai_text': '',
         'lead_id': lead_id,
+        't_lead_id': t_lead_id,
         'call_uuid': websocket.args.get('CallUUID', 'unknown'),
         'from_number': websocket.args.get('From', ''),
         'to_number': websocket.args.get('To', ''),
