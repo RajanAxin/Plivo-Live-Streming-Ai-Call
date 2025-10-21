@@ -1156,7 +1156,7 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number):
                 print(f"[TRANSFER] Using URL: {url}")
             else:
                 print("to_number is not 12176186806")
-                url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                url = "https://snapit:mysnapit22@stage.linkup.software/api/updateailead"
 
             # Make the API call
             async with aiohttp.ClientSession() as session:
