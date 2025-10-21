@@ -518,11 +518,11 @@ async def handle_message():
                     "temperature": 0.8,
                     "instructions": (
                         f"Start with this exact phrase: '{audio_message}' "
-                        f"Wait for the user to confirm their identity. "
-                        f"If they confirm (say 'Yes', 'That's me', or 'Speaking'), then ask: 'Great! How are you today?' and wait for response. "
-                        f"If they don't confirm but give their name, respond with: 'Sorry about that [name]. How are you today?'"
-                        f"For this initial introduction only, follow these instructions instead of the WAIT FOR USER CONFIRMATION rule."
-                        f"IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+                        f"Then pause briefly to let the user respond. "
+                        f"Keep your responses natural and conversational. "
+                        f"Ask open-ended questions to encourage dialogue. "
+                        f"Speak at a normal pace - don't rush through your responses. "
+                        f"Always complete your full thoughts and sentences naturally."
                     )
                 }
             }
