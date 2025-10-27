@@ -1016,7 +1016,7 @@ async def send_Session_update(openai_ws,prompt_to_use,voice_name):
             "instructions": full_prompt,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
-            "input_audio_transcription": {"model": "whisper-1"}  # Enable transcription
+            "input_audio_transcription": {"model": "whisper-1", "language": "en"}  # Enable transcription
         }
     }
     await openai_ws.send(json.dumps(session_update))
