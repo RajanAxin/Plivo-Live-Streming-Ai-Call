@@ -11,6 +11,7 @@ from database import get_db_connection
 import concurrent.futures
 import datetime
 import csv
+import re
 import aiohttp
 from dateutil import parser
 from datetime import datetime
@@ -1074,21 +1075,22 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
         if collected_facts.get('move_size'):
             move_size_lower = collected_facts['move_size'].lower()
             
-            if move_size_lower in ['Studio', 'studio', 'studio apartment', 'Studio apartment', 'studio room', 'Studio room']:
+            if re.search(r'studio|studio apartment|studio room|studio room|studio apartment|studio apartment', move_size_lower):
                 update_data['move_size'] = 1
-            elif move_size_lower in ['1 bedroom', 'one bedroom', 'One Bedroom', '1-bedroom', 'one-bedroom', '1 bed', 'one bed']:
+                api_update_data['move_size_id'] = 1
+            if re.search(r'1\s*bed|one\s*bed', move_size_lower):
                 update_data['move_size'] = 2
                 api_update_data['move_size_id'] = 2
-            elif move_size_lower in ['2 bedrooms', 'two bedroom', 'Two Bedroom', '2-bedroom', 'two-bedroom', '2 bed', 'two bed']:
+            if re.search(r'2\s*bed|two\s*bed', move_size_lower):
                 update_data['move_size'] = 3
                 api_update_data['move_size_id'] = 3
-            elif move_size_lower in ['3 bedrooms', 'three bedroom', 'Three Bedroom', '3-bedroom', 'three-bedroom', '3 bed', 'three bed']:
+            if re.search(r'3\s*bed|three\s*bed', move_size_lower):
                 update_data['move_size'] = 4
                 api_update_data['move_size_id'] = 4
-            elif move_size_lower in ['4 bedrooms', 'four bedroom', 'Four Bedroom', 'four-bedroom', '4-bedroom', '4 bed', 'four bed']:
+            if re.search(r'4\s*bed|four\s*bed', move_size_lower):
                 update_data['move_size'] = 5
                 api_update_data['move_size_id'] = 5
-            elif any(term in move_size_lower for term in ['5+', '5 bedroom', 'five bedroom', '5 bed', 'five bed']):
+            if re.search(r'5\+|5\s*bed|five\s*bed', move_size_lower):
                 update_data['move_size'] = 6
                 api_update_data['move_size_id'] = 6
             else:
