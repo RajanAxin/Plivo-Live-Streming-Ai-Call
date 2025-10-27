@@ -909,7 +909,13 @@ async def send_Session_update(openai_ws,prompt_to_use,voice_name):
     session_update = {
         "type": "session.update",
         "session": {
-            "turn_detection": {"type": "server_vad"},
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,  # Lower = more sensitive, Higher = less sensitive
+                "prefix_padding_ms": 300,  # Capture 300ms before speech starts
+                "silence_duration_ms": 1000,  # Wait 1 second of silence before considering speech ended
+                "create_response": True  # Automatically create response when user stops speaking
+            },
             "tools": [
                 {
                     "type": "function",
@@ -1167,7 +1173,7 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number):
             # Make the API call
             async with aiohttp.ClientSession() as session:
                 # ✅ Add 4-second delay before making API call
-                await asyncio.sleep(4)
+                await asyncio.sleep(2)
                 async with session.post(
                     url,
                     headers={'Content-Type': 'application/json'},
