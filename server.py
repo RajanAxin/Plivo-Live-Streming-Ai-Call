@@ -154,6 +154,17 @@ def initialize_database():
                     INDEX (conversation_id)
                 )
             """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tool_responses (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    lead_id INT NOT NULL DEFAULT '0',
+                    tool_response JSON NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX (lead_id)
+                )
+            """)
+
             conn.commit()
             print("Database initialized successfully")
         except Exception as e:
@@ -816,10 +827,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             }
             await plivo_ws.send(json.dumps(audio_delta))
         elif event_type == 'response.function_call_arguments.done':
+            conn = get_db_connection()
+            cursor = conn.cursor()
             #print(f'Received function call response: {response}')
             args = json.loads(response['arguments'])
             print(f'Received custom tool response: {args}')
-
+            cursor.execute("""
+                INSERT INTO tool_responses (lead_id, tool_response)
+                VALUES (%s, %s)
+            """, (conversation_state['lead_id'], json.dumps(args)))
+            conn.commit()
+            print(f"Successfully stored tool response for lead_id: {conversation_state['lead_id']}")
             # Extract collected_facts
             disposition_status = args.get('disposition', {})
             collected_facts = args.get('collected_facts', {})
