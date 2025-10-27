@@ -831,6 +831,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             if disposition_status and disposition_status.get('value'):
                 if disposition_status['value'] == 'Live Transfer':
                     # Do something for Live Transfer
+                    await transfer_call(lead_id, to_number)
                     print("Processing Live Transfer...")
                 elif disposition_status['value'] == 'Truck Rental Transfer':
                     # Do something for Truck Rental Transfer
@@ -1185,6 +1186,80 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number):
                     else:
                         response_text = await resp.text()
                         print(f"[TRANSFER] API call failed with status {resp.status}: {response_text}")
+
+
+async def transfer_call(lead_id,to_number):
+        try:
+            print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+            
+            # Fetch lead data from database
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor(dictionary=True, buffered=True)
+                cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
+                lead_data = cursor.fetchone()
+                cursor.close()
+                conn.close()
+            else:
+                raise Exception("Failed to get database connection")
+            
+            if not lead_data:
+                raise Exception(f"Lead not found for lead_id: {lead_id}")
+            
+            print(f"[TRANSFER] Lead Data: {lead_data['phone']}")
+            
+            # Prepare the payload
+            payload = {
+            'id': lead_data.get('t_call_id'),
+            'action': 1,
+            'type': 1,
+            'review_call': lead_data.get('review_call',0),  # defaults to 0 if None or missing
+            'accept_call': 0,
+            'rep_id': lead_data.get('t_rep_id'),
+            'logic_check': 1,
+            'lead_id': lead_data.get('t_lead_id'),
+            'categoryId': 1,
+            'buffer_id_arr': '',
+            'campaignId': lead_data.get('campaign_id'),
+            'campaignScore': lead_data.get('campaign_score'),
+            'campaignNumber': lead_data.get('mover_phone'),
+            'campaignPayout': lead_data.get('campaign_payout')
+            }
+            
+            print(f"[TRANSFER] Payload: {payload}")
+            # Determine URL based on phone number
+            if to_number == "12176186806":
+                # Determine URL based on phone number
+                if lead_data['phone'] in ("6025298353", "6263216095"):
+                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+                else:
+                    url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+                print(f"[TRANSFER] Using URL: {url}")
+            else:
+                print("to_number is not 12176186806")
+                url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+            
+            print(f"[TRANSFER] Using URL: {url}")
+            
+            # Make the API call
+            async with aiohttp.ClientSession() as session:
+                # ✅ Add 3-second delay before making API call
+                await asyncio.sleep(2)
+                async with session.post(
+                    url,
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(payload)
+                ) as resp:
+                    if resp.status == 200:
+                        response_text = await resp.text()
+                        print(f"[TRANSFER] API call successful: {response_text}")
+                        return
+                    else:
+                        response_text = await resp.text()
+                        raise Exception(f"API call failed with status {resp.status}: {response_text}")
+        
+        except Exception as e:
+            print(f"[TRANSFER] Error: {e}")
 
 if __name__ == "__main__":
     print('Starting server to handle inbound Plivo calls...')
