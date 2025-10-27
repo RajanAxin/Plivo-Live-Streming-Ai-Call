@@ -467,7 +467,7 @@ async def handle_message():
                 cursor.execute("SELECT * FROM ai_agent_prompts WHERE ai_agent_id = %s and is_active = 1", (ai_agent_id,))
                 ai_agent_prompt = cursor.fetchone()
                 if ai_agent_prompt:
-                    prompt_text = ai_agent_prompt['prompt_text']
+                    prompt_text = get_system_prompt()
                     # If we have lead_id, fetch lead data and replace placeholders
                     if lead_id and lead_id != 'unknown':
                         try:
