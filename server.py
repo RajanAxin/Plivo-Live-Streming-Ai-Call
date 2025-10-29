@@ -1334,6 +1334,7 @@ async def dispostion_status_update(lead_id, disposition_val, t_lead_id):
         # Build the URL with proper encoding
         query_string = urlencode(params, quote_via=quote)
         redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
+        print(f"[DISPOSITION] Redirect URL: {redirect_url}")
         response = requests.post(redirect_url)
         print(f"[DEBUG] Redirect URL: {response}")
         
