@@ -1347,8 +1347,7 @@ async def dispostion_status_update(lead_id, disposition_val):
         print(f"[DISPOSITION] Redirect URL: {redirect_url}")
         response = requests.post(redirect_url)
         print(f"[DEBUG] Redirect URL: {response}")
-        
-        print(f"[DISPOSITION] Lead {t_lead_id} disposition updated to {disposition}")
+        print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
     except Exception as e:
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
