@@ -1064,7 +1064,7 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
             api_update_data['from_state'] = collected_facts['lead_from_state']
         if collected_facts.get('lead_from_zipcode'):
             update_data['from_zip'] = collected_facts['lead_from_zipcode']
-            api_update_data['from_zip'] = collected_facts['lead_from_zipcode']
+            api_update_data['from_zipcode'] = collected_facts['lead_from_zipcode']
         if collected_facts.get('lead_to_city'):
             update_data['to_city'] = collected_facts['lead_to_city']
             api_update_data['to_city'] = collected_facts['lead_to_city']
@@ -1073,25 +1073,25 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
             api_update_data['to_state'] = collected_facts['lead_to_state']
         if collected_facts.get('lead_to_zipcode'):
             update_data['to_zip'] = collected_facts['lead_to_zipcode']
-            api_update_data['to_zip'] = collected_facts['lead_to_zipcode']
-        if collected_facts.get('move_date'):
-            original_date = collected_facts['move_date']
+            api_update_data['to_zipcode'] = collected_facts['lead_to_zipcode']
+        if collected_facts.get('lead_move_date'):
+            original_date = collected_facts['lead_move_date']
             try:
                 # Parse and format the date
                 parsed_date = parser.parse(original_date)
                 formatted_date = parsed_date.strftime('%Y/%m/%d')
                 update_data['move_date'] = formatted_date
-                api_update_data['move_date'] = formatted_date
+                api_update_data['lead_move_date'] = formatted_date
                 print(f"[DATE_CONVERSION] {original_date} -> {formatted_date}")
             except Exception as e:
                 # If parsing fails, use original
                 print(f"[DATE_CONVERSION] Error parsing '{original_date}': {e}")
                 update_data['move_date'] = original_date
-                api_update_data['move_date'] = original_date
+                api_update_data['lead_move_date'] = original_date
         
         # Handle move_size conversion
-        if collected_facts.get('move_size'):
-            move_size_lower = collected_facts['move_size'].lower()
+        if collected_facts.get('lead_move_size'):
+            move_size_lower = collected_facts['lead_move_size'].lower()
             
             if re.search(r'studio|studio apartment|studio room|studio room|studio apartment|studio apartment', move_size_lower):
                 update_data['move_size'] = 1
@@ -1112,8 +1112,8 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
                 update_data['move_size'] = 6
                 api_update_data['move_size_id'] = 6
             else:
-                update_data['move_size'] = collected_facts['move_size']
-                api_update_data['move_size_id'] = collected_facts['move_size']
+                update_data['move_size'] = collected_facts['lead_move_size']
+                api_update_data['move_size_id'] = collected_facts['lead_move_size']
 
 
         api_success = await update_lead_to_external_api(api_update_data,lead_phone, to_number)
