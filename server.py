@@ -2,11 +2,12 @@ import plivo
 from quart import Quart, websocket, Response, request
 import asyncio
 import websockets
+import requests
 import json
 import base64
 from dotenv import load_dotenv
 import os
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from database import get_db_connection
 import concurrent.futures
 import datetime
@@ -278,7 +279,8 @@ async def home():
                 
                 if lead_data and lead_data['type'] == "outbound":
                     if lead_data.get('name'):
-                        audio_message = f"HI, This is jason from {ai_agent_name}. how are you {lead_data['name']}?"
+                        lead_user_name = lead_data.get('name')
+                        audio_message = f"HI, This is jason from {ai_agent_name}. how are you {lead_user_name}?"
                     else:
                         audio_message = f"HI, This is jason from {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
                        
@@ -536,10 +538,9 @@ async def handle_message():
                     "instructions": (
                         f"Start with this exact phrase: '{audio_message}' "
                         f"Wait for the user to confirm their identity. "
-                        f"If they confirm (say 'Yes', 'That's me', or 'Speaking'), then ask: 'Great! How are you today?' and wait for response. "
-                        f"If they don't confirm but give their name, respond with: 'Sorry about that [name]. How are you today?'"
-                        f"For this initial introduction only, follow these instructions instead of the WAIT FOR USER CONFIRMATION rule."
-                        f"IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+                        f"IMPORTANT: Ignore any initial background audio, copyright notices, or system messages. "
+                        f"Only respond to clear human speech after your introduction. "
+                        f"Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
                     )
                 }
             }
@@ -850,15 +851,18 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             if disposition_status and disposition_status.get('value'):
                 if disposition_status['value'] == 'Live Transfer':
                     # Do something for Live Transfer
-                    await transfer_call(lead_id, to_number)
+                    await transfer_call(lead_id, to_number,1)
                     print("Processing Live Transfer...")
-                elif disposition_status['value'] == 'Truck Rental Transfer':
-                    # Do something for Truck Rental Transfer
-                    print("Processing Truck Rental Transfer...")
+                elif disposition_status['value'] == 'Truck Retnal Transfer':
+                    await transfer_call(lead_id, to_number,2)
+                    # Do something for Truck Retnal Transfer
+                    print("Processing Truck Retnal Transfer...")
                 elif disposition_status['value'] == 'Support Transfer':
                     # Do something for Support Transfer
                     print("Processing Support Transfer...")
                 else:
+                    await dispostion_status_update(lead_id,disposition_status['value'],t_lead_id)
+                    print(disposition_status['value'])
                     print("Disposition status is empty or not set")
             else:
                 print("Disposition status is empty or not set")
@@ -1208,7 +1212,7 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number):
                         print(f"[TRANSFER] API call failed with status {resp.status}: {response_text}")
 
 
-async def transfer_call(lead_id,to_number):
+async def transfer_call(lead_id,to_number,transfer_type):
         try:
             print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
             
@@ -1218,6 +1222,11 @@ async def transfer_call(lead_id,to_number):
                 cursor = conn.cursor(dictionary=True, buffered=True)
                 cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
                 lead_data = cursor.fetchone()
+                if transfer_type == 2:
+                    cursor.execute("SELECT * FROM lead_call_contact_details WHERE lead_id = %s AND call_type = 'truck_rental_transfer'", (lead_id,))
+                    lead_truck_rental_data = cursor.fetchone()
+                else:
+                    lead_truck_rental_data = None
                 cursor.close()
                 conn.close()
             else:
@@ -1242,7 +1251,7 @@ async def transfer_call(lead_id,to_number):
             'buffer_id_arr': '',
             'campaignId': lead_data.get('campaign_id'),
             'campaignScore': lead_data.get('campaign_score'),
-            'campaignNumber': lead_data.get('mover_phone'),
+            'campaignNumber': lead_truck_rental_data.get('phone') if transfer_type == 2 else lead_data.get('mover_phone'),
             'campaignPayout': lead_data.get('campaign_payout')
             }
             
@@ -1280,6 +1289,57 @@ async def transfer_call(lead_id,to_number):
         
         except Exception as e:
             print(f"[TRANSFER] Error: {e}")
+
+
+async def dispostion_status_update(lead_id, disposition_val, t_lead_id):
+    try:
+
+        if disposition_val == 'DNC':
+            disposition = 2
+        elif disposition_val == 'Not Interested':
+            disposition = 3
+        elif disposition_val == 'Follow Up':
+            disposition = 4
+        elif disposition_val == 'No Buyer':
+            disposition = 5
+        elif disposition_val == 'Busy':
+            disposition = 6
+        elif disposition_val == 'Voice Message':
+            disposition = 7
+        elif disposition_val == 'Booked':
+            disposition = 8
+        elif disposition_val == 'Only Call':
+            disposition = 9
+        elif disposition_val == 'Booked with Us':
+            disposition = 10
+        elif disposition_val == 'Booked with PODs':
+            disposition = 11
+        elif disposition_val == 'Booked with Truck Rental':
+            disposition = 12
+        elif disposition_val == 'Truck Rental':
+            disposition = 13
+        elif disposition_val == 'IB Pickup':
+            disposition = 14
+        elif disposition_val == 'No Answer':
+            disposition = 15
+        elif disposition_val == 'Business Relay':
+            disposition = 16 
+        else:
+            disposition = 17
+        params = {
+            "lead_id": t_lead_id,
+            "disposition": disposition
+        }
+        print(f"[DISPOSITION] Lead {t_lead_id} disposition updated to {disposition}")
+        # Build the URL with proper encoding
+        query_string = urlencode(params, quote_via=quote)
+        redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
+        response = requests.post(redirect_url)
+        print(f"[DEBUG] Redirect URL: {response}")
+        
+        print(f"[DISPOSITION] Lead {t_lead_id} disposition updated to {disposition}")
+    except Exception as e:
+        print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
 if __name__ == "__main__":
     print('Starting server to handle inbound Plivo calls...')
