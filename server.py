@@ -861,7 +861,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     # Do something for Support Transfer
                     print("Processing Support Transfer...")
                 else:
-                    await dispostion_status_update(lead_id,disposition_status['value'],t_lead_id)
+                    await dispostion_status_update(lead_id,disposition_status['value'])
                     print(disposition_status['value'])
                     print("Disposition status is empty or not set")
             else:
@@ -1291,7 +1291,7 @@ async def transfer_call(lead_id,to_number,transfer_type):
             print(f"[TRANSFER] Error: {e}")
 
 
-async def dispostion_status_update(lead_id, disposition_val, t_lead_id):
+async def dispostion_status_update(lead_id, disposition_val):
     try:
 
         if disposition_val == 'DNC':
@@ -1327,10 +1327,10 @@ async def dispostion_status_update(lead_id, disposition_val, t_lead_id):
         else:
             disposition = 17
         params = {
-            "lead_id": t_lead_id,
+            "lead_id": lead_id,
             "disposition": disposition
         }
-        print(f"[DISPOSITION] Lead {t_lead_id} disposition updated to {disposition}")
+        print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         # Build the URL with proper encoding
         query_string = urlencode(params, quote_via=quote)
         redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
