@@ -856,7 +856,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     # Do something for Live Transfer
                     await transfer_call(lead_id, to_number,1)
                     print("Processing Live Transfer...")
-                elif disposition_status['value'] == 'Truck Retnal Transfer':
+                elif disposition_status['value'] == 'Truck Retnal Transfer' or disposition_status['value'] == 'Truck Rental Transfer':
                     await transfer_call(lead_id, to_number,2)
                     # Do something for Truck Retnal Transfer
                     print("Processing Truck Retnal Transfer...")
