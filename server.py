@@ -1096,19 +1096,19 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
             if re.search(r'studio|studio apartment|studio room|studio room|studio apartment|studio apartment', move_size_lower):
                 update_data['move_size'] = 1
                 api_update_data['move_size_id'] = 1
-            if re.search(r'1\s*bed|one\s*bed', move_size_lower):
+            elif  re.search(r'1\s*bed|one\s*bed', move_size_lower):
                 update_data['move_size'] = 2
                 api_update_data['move_size_id'] = 2
-            if re.search(r'2\s*bed|two\s*bed', move_size_lower):
+            elif  re.search(r'2\s*bed|two\s*bed', move_size_lower):
                 update_data['move_size'] = 3
                 api_update_data['move_size_id'] = 3
-            if re.search(r'3\s*bed|three\s*bed', move_size_lower):
+            elif  re.search(r'3\s*bed|three\s*bed', move_size_lower):
                 update_data['move_size'] = 4
                 api_update_data['move_size_id'] = 4
-            if re.search(r'4\s*bed|four\s*bed', move_size_lower):
+            elif  re.search(r'4\s*bed|four\s*bed', move_size_lower):
                 update_data['move_size'] = 5
                 api_update_data['move_size_id'] = 5
-            if re.search(r'5\+|5\s*bed|five\s*bed', move_size_lower):
+            elif  re.search(r'5\+|5\s*bed|five\s*bed', move_size_lower):
                 update_data['move_size'] = 6
                 api_update_data['move_size_id'] = 6
             else:
