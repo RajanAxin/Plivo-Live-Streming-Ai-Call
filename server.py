@@ -407,7 +407,10 @@ async def test():
                     url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
             else:
                     print("to_number is not 12176186806")
-                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                    if lead_data['phone'] in ("6025298353", "6263216095"):
+                        url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                    else:
+                        url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
                     #url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 # if lead_data and lead_data.get('phone') == "6025298353":
                 #     url = "https://snapit:mysnapit22@stagedialup.software/api/calltransfertest"
@@ -1193,7 +1196,10 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number):
                 print(f"[TRANSFER] Using URL: {url}")
             else:
                 print("to_number is not 12176186806")
-                url = "https://snapit:mysnapit22@stage.linkup.software/api/updateailead"
+                if lead_phone in ("6025298353", "6263216095"):
+                    url = "https://snapit:mysnapit22@stage.linkup.software/api/updateailead"
+                else:
+                    url = "https://linkup:newlink_up34@linkup.software/api/updateailead"
 
             # Make the API call
             async with aiohttp.ClientSession() as session:
@@ -1266,7 +1272,10 @@ async def transfer_call(lead_id,to_number,transfer_type):
                 print(f"[TRANSFER] Using URL: {url}")
             else:
                 print("to_number is not 12176186806")
-                url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                if lead_data['phone'] in ("6025298353", "6263216095"):
+                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                else:
+                    url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
             
             print(f"[TRANSFER] Using URL: {url}")
             
