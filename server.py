@@ -1081,13 +1081,13 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
                 parsed_date = parser.parse(original_date)
                 formatted_date = parsed_date.strftime('%Y/%m/%d')
                 update_data['move_date'] = formatted_date
-                api_update_data['lead_move_date'] = formatted_date
+                api_update_data['move_date'] = formatted_date
                 print(f"[DATE_CONVERSION] {original_date} -> {formatted_date}")
             except Exception as e:
                 # If parsing fails, use original
                 print(f"[DATE_CONVERSION] Error parsing '{original_date}': {e}")
                 update_data['move_date'] = original_date
-                api_update_data['lead_move_date'] = original_date
+                api_update_data['move_date'] = original_date
         
         # Handle move_size conversion
         if collected_facts.get('lead_move_size'):
