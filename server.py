@@ -1304,7 +1304,7 @@ async def dispostion_status_update(lead_id, disposition_val, t_lead_id):
             disposition = 5
         elif disposition_val == 'Busy':
             disposition = 6
-        elif disposition_val == 'Voice Message':
+        elif disposition_val == 'Voicemail':
             disposition = 7
         elif disposition_val == 'Booked':
             disposition = 8
