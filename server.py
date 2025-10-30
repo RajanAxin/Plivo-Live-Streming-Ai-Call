@@ -140,8 +140,6 @@ app = Quart(__name__)
 
 
 
-# transcript and disposiation api
-
 def download_file(url, save_as="input.mp3"):
     """Download MP3 from URL"""
     response = requests.get(url, stream=True)
@@ -170,20 +168,28 @@ def segment_speakers(transcript_text: str):
             {"role": "user", "content": f"""
             Split this transcript into two speakers: Agent and Customer.
             Keep the order of the conversation, and don't add extra text.
+            Keep the correct back-and-forth flow. 
             Transcript:
             {transcript_text}
             After splitting, analyze the conversation and return the final disposition in JSON.
 
         Possible dispositions are:
-        - wrong number
-        - not interested
-        - voicemail
-        - followup (when customer says busy or call later)
-        - truck rental
-        - already booked
-        - goodbye
-        - live transfer
-
+        - Not Connected
+        - Live Transfer
+        - DNC
+        - Not Interested
+        - Follow Up
+        - No Buyer
+        - Voice Message
+        - Wrong Phone
+        - Booked
+        - Booked with Us
+        - Booked with PODs
+        - Booked with Truck Rental
+        - Truck Rental
+        - IB Pickup
+        - No Answer
+        - Business Relay
         Output format (JSON only):
         {{
             "conversation": [
@@ -220,6 +226,7 @@ def disposition_process():
         
     except Exception as e:
         return {"error": str(e)}
+
 # Initialize database table
 def initialize_database():
     conn = get_db_connection()
