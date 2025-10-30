@@ -441,6 +441,7 @@ async def test():
         print(f"Machine Detected - Hanging up call")
         if lead_id and lead_call_id and user_id:
             # Get lead data from database using your style
+            await dispostion_status_update(lead_id, 'Voicemail')
             conn = get_db_connection()
             if conn:
                 try:
