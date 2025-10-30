@@ -1312,9 +1312,9 @@ async def dispostion_status_update(lead_id, disposition_val):
             disposition = 4
         elif disposition_val == 'No Buyer':
             disposition = 5
-        elif disposition_val == 'Busy':
-            disposition = 6
         elif disposition_val == 'Voicemail':
+            disposition = 6
+        elif disposition_val == 'Wrong Phone':
             disposition = 7
         elif disposition_val == 'Booked':
             disposition = 8
