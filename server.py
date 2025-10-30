@@ -24,7 +24,7 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 
-
+app = Quart(__name__)
 # transcript and disposiation api
 
 def download_file(url, save_as="input.mp3"):
