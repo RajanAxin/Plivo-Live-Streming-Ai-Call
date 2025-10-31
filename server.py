@@ -441,7 +441,7 @@ async def test():
         print(f"Machine Detected - Hanging up call")
         if lead_id and lead_call_id and user_id:
             # Get lead data from database using your style
-            await dispostion_status_update(lead_id, 'Voicemail')
+            #await dispostion_status_update(lead_id, 'Voicemail')
             conn = get_db_connection()
             if conn:
                 try:
@@ -498,7 +498,7 @@ async def test():
                     url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
             else:
                     print("to_number is not 12176186806")
-                    if lead_data['phone'] in ("6025298353", "6263216095"):
+                    if lead_data and lead_data.get('phone') in ("6025298353", "6263216095"):
                         url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                     else:
                         url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
