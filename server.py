@@ -518,7 +518,7 @@ async def test():
                         timeout=aiohttp.ClientTimeout(total=30)
                     ) as response:
                         response_text = await response.text()
-                        print(f"callit log curl_api_call URL: {url} === res: {response_text}")
+                        #print(f"callit log curl_api_call URL: {url} === res: {response_text}")
                         
             except Exception as e:
                 print(f"Error making API call: {e}")
