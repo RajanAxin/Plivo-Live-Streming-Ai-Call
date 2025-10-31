@@ -470,7 +470,6 @@ async def test():
                 'id': lead_call_id,
                 'action': 6,
                 'type': 1,
-                'usaBusinessCheck': 0,
                 'call': '1',
                 'follow_up_date_time': '',
                 'follow_up_time': '',
