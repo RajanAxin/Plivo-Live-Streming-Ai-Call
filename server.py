@@ -448,7 +448,7 @@ async def test():
                     cursor = conn.cursor(dictionary=True, buffered=True)
                     cursor.execute("""
                         SELECT * FROM `leads` 
-                        WHERE lead_id = %s 
+                        WHERE t_lead_id = %s 
                         ORDER BY lead_id DESC 
                         LIMIT 1
                     """, (lead_id,))
