@@ -1339,7 +1339,7 @@ async def transfer_call(lead_id,to_number,transfer_type):
             payload = {
             'id': lead_data.get('t_call_id'),
             'action': 1,
-            'usaBusinessCheck': 0 if transfer_type == 2 else 1,
+            'usaBusinessCheck': 1 if transfer_type == 2 else 0,
             'type': 1,
             'review_call': lead_data.get('review_call',0),  # defaults to 0 if None or missing
             'accept_call': 0,
