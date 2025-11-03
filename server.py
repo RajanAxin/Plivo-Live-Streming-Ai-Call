@@ -421,7 +421,7 @@ async def home():
     return Response(xml_data, mimetype='application/xml')
 
 
-@app.route("/test", methods=["POST"])
+@app.route("/test-stop-now", methods=["POST"])
 async def test():
     # Get form data (POST params)
     data = await request.form
