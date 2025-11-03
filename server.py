@@ -315,6 +315,7 @@ async def home():
     audio = 'plivoai/vanline_inbound.mp3'
     audio_message = "HI, This is ai-agent. Tell me what can i help you?"
     ai_agent_name = 'AI Agent'
+    brand_name = ''
     ai_agent_id = None  # Initialize ai_agent_id
     
     # Database queries using mysql.connector
@@ -370,8 +371,10 @@ async def home():
                 if lead_data and lead_data['type'] == "outbound":
                     if lead_data.get('name'):
                         lead_user_name = lead_data.get('name')
+                        brand_name = f"jason from {ai_agent_name}"
                         audio_message = f"HI, This is jason from {ai_agent_name}. how are you {lead_user_name}?"
                     else:
+                        brand_name = f"jason from {ai_agent_name}"
                         audio_message = f"HI, This is jason from {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
                        
                         
@@ -405,6 +408,7 @@ async def home():
     f"&amp;t_lead_id={t_lead_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
+    f"&amp;brand_name={quote(brand_name)}"
     f"&amp;ai_agent_id={ai_agent_id}"  # Add ai_agent_id to the URL
     f"&amp;lead_timezone={lead_timezone}"  # Add lead_timezone to the URL
     )              
@@ -421,7 +425,7 @@ async def home():
     return Response(xml_data, mimetype='application/xml')
 
 
-@app.route("/test-stop-now", methods=["POST"])
+@app.route("/test", methods=["POST"])
 async def test():
     # Get form data (POST params)
     data = await request.form
@@ -534,6 +538,7 @@ async def handle_message():
     plivo_ws = websocket 
     audio_message = websocket.args.get('audio_message', "Hi this is verse How can i help you?")
     ai_agent_name = websocket.args.get('ai_agent_name', 'AI Agent')
+    brand_name = websocket.args.get('brand_name', 'Jason')
     call_uuid = websocket.args.get('CallUUID', 'unknown')
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
@@ -583,9 +588,9 @@ async def handle_message():
                             cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id_int,))
                             lead_data = cursor.fetchone()
                             if lead_data:
+                                prompt_text = prompt_text.replace("[brand_name]", brand_name)
                                 for key, value in lead_data.items():
                                     placeholder = f"[lead_{key}]"
-                                    
                                     # Special handling for move_size placeholder
                                     if key == "move_size" and value:
                                         cursor.execute("SELECT move_size FROM mst_move_size WHERE move_size_id = %s", (value,))
