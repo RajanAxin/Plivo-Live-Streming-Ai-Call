@@ -154,7 +154,7 @@ def transcribe(file_path):
     """Transcribe audio using OpenAI Whisper"""
     with open(file_path, "rb") as f:
         transcript = openai.audio.transcriptions.create(
-            model="gpt-4o-transcribe",  # or "whisper-1"
+            model="whisper-1",  # or "whisper-1"
             file=f
         )
     return transcript.text
@@ -217,7 +217,7 @@ def disposition_process():
         file_path = download_file(mp3_url)
         text = transcribe(file_path)
         result_json = segment_speakers(text)
-        
+        os.remove(file_path)
         # Parse the JSON string to a Python dictionary
         result_dict = json.loads(result_json)
         
