@@ -371,11 +371,12 @@ async def home():
                 if lead_data and lead_data['type'] == "outbound":
                     if lead_data.get('name'):
                         lead_user_name = lead_data.get('name')
-                        brand_name = f"jason from {ai_agent_name}"
-                        audio_message = f"HI, This is jason from {ai_agent_name}. how are you {lead_user_name}?"
+                        brand_name = f"{ai_agent_name}"
+                        #audio_message = f"HI, This is jason from {ai_agent_name}. how are you {lead_user_name}?"
+                        audio_message = f"Hi {lead_user_name}, I'm Calling from {ai_agent_name}. how are you?"
                     else:
-                        brand_name = f"jason from {ai_agent_name}"
-                        audio_message = f"HI, This is jason from {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
+                        brand_name = f"{ai_agent_name}"
+                        audio_message = f"HI {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
                        
                         
         except Exception as e:

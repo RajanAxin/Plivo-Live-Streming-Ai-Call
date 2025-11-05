@@ -17,9 +17,9 @@ TOOL9,TOOLS,LOOKUP_ZIP_OPTIONS,DEF,City→ZIP options lookup (backend),tool_def,
 PH1,PHASE_DEF,GREET_COLLECT_CORE,DEF,Collect minimal basics (DB vars),phase_def,,"Exit when filled: lead_from_zip, lead_to_zip, lead_move_date, move_size. Next: PERSUADE_TRANSFER.",PHASE_DEF
 PH2,PHASE_DEF,PERSUADE_TRANSFER,DEF,Persuade (rental/time) and ask to connect,phase_def,,Goal: ask to connect; if yes → choose best transfer per PRIO.,PHASE_DEF
 PH3,PHASE_DEF,SUPPORT_ROUTING,DEF,Non-quote/Spanish → Support; set dispositions,phase_def,,Goal: correct routing + call_disposition update.,PHASE_DEF
-G0,GREET_COLLECT_CORE,GREET_BY_NAME,,Personalized greeting by name; friendly opener,start; hello; first turn,,"Hi [lead_name], how are you today?",NEXT:G0B; DISP:Only Call
-G0B,GREET_COLLECT_CORE,REASON_FOR_CALL,,Personalized reason using lead data,after G0,,I’m calling about your move from [lead_from_city] to [lead_to_city] on [lead_move_date] to get you the best quote.,NEXT:G1
-G1,GREET_COLLECT_CORE,ROLE_TRUST,,Set role & benefit in one line,start; unsure; who are you,,,We help you get the best moving quote fast—matching your dates and route.
+G0,GREET_COLLECT_CORE,GREET_BY_NAME,,Personalized greeting by name; friendly opener,start; hello; first turn,,"Hi [lead_name], I'm Calling from [brand_name]. how are you today?",NEXT:G2; DISP:Only Call,,
+G1,GREET_COLLECT_CORE,ROLE_TRUST,,Set role & benefit in one line,start; unsure; who are you,,,We help you get the best moving quote fast—matching your dates and route.,NEXT:G3,
+G2,GREET_COLLECT_CORE,REASON_FOR_CALL,,Personalized reason using lead data,after G0,,I’m calling about your move from [lead_from_city] to [lead_to_city] on [move_date] to get you the best quote.,NEXT:G1,,
 G3,GREET_COLLECT_CORE,ASK_ZIPS_OR_CITY,,Capture from/to ZIPs—or city+state if ZIP unknown,start facts; missing zips; price asked early with no zips,,,"What’s the from ZIP and the to ZIP? If you prefer, tell me the from city and state."
 G3A,GREET_COLLECT_CORE,FROM_CITY_STATE,,Capture FROM city+state if ZIP unknown,mentions: from city; from town; from area,,,"What’s the **from city and state**? For example, “Austin, Texas.”"
 G3C,GREET_COLLECT_CORE,FROM_ZIP_OPTIONS,,Offer ZIP options for FROM city+state,city provided; no from ZIP,lead_from_city|lead_from_state,"Here are ZIP options for [lead_from_city], [lead_from_state]: [zip_options]. Which one matches your address?","ACTION:lookup_zip_options(lead_from_city,lead_from_state); COLLECT:lead_from_zip; ACTION:crm_update"
