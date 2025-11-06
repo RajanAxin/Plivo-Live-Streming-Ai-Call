@@ -1311,6 +1311,7 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number):
                     if resp.status == 200:
                         response_text = await resp.text()
                         print(f"[TRANSFER] API call successful: {response_text}")
+                        print("[TRANSFER] URL: ",url)
                     else:
                         response_text = await resp.text()
                         print(f"[TRANSFER] API call failed with status {resp.status}: {response_text}")
