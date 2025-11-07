@@ -377,6 +377,9 @@ async def home():
                     else:
                         brand_name = f"{ai_agent_name}"
                         audio_message = f"HI {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
+                else:
+                        brand_name = f"{ai_agent_name}"
+                        audio_message = f"Hi, I'm Calling from {ai_agent_name}. how are you?"
                        
                         
         except Exception as e:
