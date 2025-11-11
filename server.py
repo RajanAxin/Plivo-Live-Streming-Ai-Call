@@ -1039,9 +1039,9 @@ async def send_Session_update(openai_ws,prompt_to_use,voice_name):
         "session": {
             "turn_detection": {
                 "type": "server_vad",
-                "threshold": 0.5,  # Lower = more sensitive, Higher = less sensitive
-                "prefix_padding_ms": 300,  # Capture 300ms before speech starts
-                "silence_duration_ms": 1000,  # Wait 1 second of silence before considering speech ended
+                "threshold": 0.7,  # Lower = more sensitive, Higher = less sensitive
+                "prefix_padding_ms": 400,  # Capture 300ms before speech starts
+                "silence_duration_ms": 1200,  # Wait 1 second of silence before considering speech ended
                 "create_response": True  # Automatically create response when user stops speaking
             },
             "tools": [
@@ -1083,14 +1083,14 @@ async def send_Session_update(openai_ws,prompt_to_use,voice_name):
                                 "type": "array", 
                                 "items": {"type": "string"}
                             },
-                            "facts_before": {
-                                "type": "array", 
-                                "items": {"type": "string"}
-                            },
-                            "facts_after": {
-                                "type": "array", 
-                                "items": {"type": "string"}
-                            },
+                            # "facts_before": {
+                            #     "type": "array", 
+                            #     "items": {"type": "string"}
+                            # },
+                            # "facts_after": {
+                            #     "type": "array", 
+                            #     "items": {"type": "string"}
+                            # },
                             "confidence": {"type": "number"},
                             "disposition": {
                                 "type": "object",
