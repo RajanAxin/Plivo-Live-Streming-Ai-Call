@@ -630,25 +630,25 @@ async def handle_message():
             
             # Send session update first
             await send_Session_update(openai_ws,prompt_to_use,voice_name)
-            await asyncio.sleep(0.5)
+            #await asyncio.sleep(0.5)
             
             # Send the specific audio_message as initial prompt
-            initial_prompt = {
-                "type": "response.create",
-                "response": {
-                    "modalities": ["audio", "text"],
-                    "temperature": 0.8,
-                    "instructions": (
-                        f"Start with this exact phrase: '{audio_message}' "
-                        f"Wait for the user to confirm their identity. "
-                        f"IMPORTANT: Ignore any initial background audio, copyright notices, or system messages. "
-                        f"Only respond to clear human speech after your introduction. "
-                        f"Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
-                    )
-                }
-            }
-            await openai_ws.send(json.dumps(initial_prompt))
-            conversation_state['active_response'] = True  # Mark that we have an active response
+            # initial_prompt = {
+            #     "type": "response.create",
+            #     "response": {
+            #         "modalities": ["audio", "text"],
+            #         "temperature": 0.8,
+            #         "instructions": (
+            #             f"Start with this exact phrase: '{audio_message}' "
+            #             f"Wait for the user to confirm their identity. "
+            #             f"IMPORTANT: Ignore any initial background audio, copyright notices, or system messages. "
+            #             f"Only respond to clear human speech after your introduction. "
+            #             f"Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+            #         )
+            #     }
+            # }
+            # await openai_ws.send(json.dumps(initial_prompt))
+            #conversation_state['active_response'] = True  # Mark that we have an active response
             
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
             
@@ -972,7 +972,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 print("Disposition status is empty or not set")
 
             if collected_facts:
-                updated = await update_lead_from_collected_facts(lead_id,t_lead_id,lead_phone, to_number, collected_facts)
+                updated = await update_lead_from_collected_facts(lead_id,t_lead_id,lead_phone, to_number, collected_facts,conversation_state['call_uuid'])
                 if updated:
                     print(f"[LEAD_UPDATE] Lead {lead_id} updated successfully")
                 else:
@@ -1142,7 +1142,7 @@ def function_call_output(arg, item_id, call_id):
     }
     return conversation_item
 
-async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_number, collected_facts):
+async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_number, collected_facts,call_uuid):
     try:
         print(f"[DEBUG] Starting update for lead_id: {lead_id}")
         print(f"[DEBUG] t_lead_id: {t_lead_id}")
@@ -1224,7 +1224,7 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
                 api_update_data['move_size_id'] = collected_facts['lead_move_size']
 
 
-        api_success = await update_lead_to_external_api(api_update_data,lead_phone, to_number)
+        api_success = await update_lead_to_external_api(api_update_data,lead_phone, to_number,call_uuid, lead_id)
         print(f"[TRANSFER] API call result: {api_success}")
 
         print(f"[DEBUG] Update data to be saved: {update_data}")
@@ -1286,38 +1286,149 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
         return False
 
 
-async def update_lead_to_external_api(api_update_data, lead_phone, to_number):
-            print("[TRANSFER] Updating lead to external API",api_update_data)
-            if to_number == "12176186806":
-                # Determine URL based on phone number
-                if lead_phone in ("6025298353", "6263216095"):
-                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/updateailead"
-                else:
-                    url = "https://zapprod:zap2024@zap.snapit.software/api/updateailead"
-                print(f"[TRANSFER] Using URL: {url}")
-            else:
-                print("to_number is not 12176186806")
-                if lead_phone in ("6025298353", "6263216095"):
-                    url = "https://snapit:mysnapit22@stage.linkup.software/api/updateailead"
-                else:
-                    url = "https://linkup:newlink_up34@linkup.software/api/updateailead"
+async def update_lead_to_external_api(api_update_data, lead_phone, to_number, call_u_id, lead_id):
+    """
+    Sends api_update_data to external updateailead endpoint and if the response
+    contains live_transfer / truck_rental, delete existing rows for the lead & call_types
+    then insert the new rows into lead_call_contact_details.
 
-            # Make the API call
-            async with aiohttp.ClientSession() as session:
-                # ✅ Add 4-second delay before making API call
-                await asyncio.sleep(2)
-                async with session.post(
-                    url,
-                    headers={'Content-Type': 'application/json'},
-                    json=api_update_data
-                ) as resp:
-                    if resp.status == 200:
-                        response_text = await resp.text()
-                        print(f"[TRANSFER] API call successful: {response_text}")
-                        print("[TRANSFER] URL: ",url)
-                    else:
-                        response_text = await resp.text()
-                        print(f"[TRANSFER] API call failed with status {resp.status}: {response_text}")
+    Returns True on API success (200 handled), False otherwise.
+    """
+    print("[TRANSFER] Updating lead to external API", api_update_data)
+    try:
+        # choose URL
+        if to_number == "12176186806":
+            if lead_phone in ("6025298353", "6263216095"):
+                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/updateailead"
+            else:
+                url = "https://zapprod:zap2024@zap.snapit.software/api/updateailead"
+        else:
+            if lead_phone in ("6025298353", "6263216095"):
+                url = "https://snapit:mysnapit22@stage.linkup.software/api/updateailead"
+            else:
+                url = "https://linkup:newlink_up34@linkup.software/api/updateailead"
+
+        print(f"[TRANSFER] Using URL: {url}")
+
+        async with aiohttp.ClientSession() as session:
+            # small delay (kept from your original)
+            await asyncio.sleep(2)
+            async with session.post(
+                url,
+                headers={'Content-Type': 'application/json'},
+                json=api_update_data,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                response_text = await resp.text()
+                if resp.status != 200:
+                    print(f"[TRANSFER] API call failed with status {resp.status}: {response_text}")
+                    return False
+
+                print(f"[TRANSFER] API call successful: {response_text}")
+
+                # parse JSON safely
+                try:
+                    payload = json.loads(response_text)
+                except Exception as e:
+                    print(f"[TRANSFER] Failed to parse JSON response: {e}")
+                    return True  # external API OK; nothing to save
+
+                data = payload.get("data") or {}
+                # Use provided lead_id (caller passes this)
+                ret_lead_id = lead_id
+
+                # helper to normalize phone numbers to digits only
+                def normalize_phone(p):
+                    if not p:
+                        return p
+                    digits = re.sub(r"\D+", "", str(p))
+                    return digits if digits else p
+
+                # collect contact entries (keys from your API are "live_transfer" and "truck_rental")
+                contacts_to_insert = []
+                call_types_seen = set()
+
+                for key, call_type in (("live_trasnfer"), ("truck_rental_transfer")):
+                    node = data.get(key)
+                    if node and isinstance(node, dict):
+                        name = node.get("mover_name") or node.get("name") or None
+                        phone = node.get("mover_phone") or node.get("phone") or None
+                        if not (name or phone):
+                            print(f"[TRANSFER] Skipping {key} — no name/phone present")
+                            continue
+                        call_types_seen.add(call_type)
+                        contacts_to_insert.append({
+                            "lead_id": int(ret_lead_id) if (ret_lead_id is not None and str(ret_lead_id).isdigit()) else (ret_lead_id or 0),
+                            "calluuid": call_u_id or api_update_data.get('calluuid') or '',
+                            "call_type": call_type,
+                            "name": name,
+                            "phone": normalize_phone(phone)
+                        })
+
+                if not contacts_to_insert:
+                    print("[TRANSFER] No live_transfer/truck_rental data to save.")
+                    return True
+
+                # Insert contacts into DB, deleting existing ones for this lead & call_types first (if lead_id provided)
+                conn = get_db_connection()
+                if not conn:
+                    print("[TRANSFER] Failed to get DB connection to insert contacts")
+                    return True  # external API succeeded; return True but log DB issue
+
+                try:
+                    cur = conn.cursor()
+                    try:
+                        # If we have a valid lead_id (numeric), perform delete for the seen call_types
+                        if ret_lead_id and str(ret_lead_id).isdigit() and call_types_seen:
+                            lead_id_int = int(ret_lead_id)
+                            call_types_list = list(call_types_seen)
+                            placeholders = ", ".join(["%s"] * len(call_types_list))
+                            delete_sql = f"""
+                                DELETE FROM lead_call_contact_details
+                                WHERE lead_id = %s AND call_type IN ({placeholders})
+                            """
+                            params = [lead_id_int] + call_types_list
+                            print(f"[TRANSFER] Deleting existing contacts for lead_id={lead_id_int} call_types={call_types_list}")
+                            cur.execute(delete_sql, params)
+                            print(f"[TRANSFER] Deleted {cur.rowcount} existing contact(s)")
+                        else:
+                            print("[TRANSFER] No valid lead_id or no call_types to delete; skipping delete step.")
+                    except Exception as e:
+                        print(f"[TRANSFER] Error during delete step: {e}")
+                        # proceed to inserts anyway
+
+                    # Insert new contacts
+                    insert_sql = """
+                        INSERT INTO lead_call_contact_details
+                            (lead_id, calluuid, call_type, name, phone)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """
+                    insert_values = [
+                        (c['lead_id'], c['calluuid'], c['call_type'], c['name'], c['phone'])
+                        for c in contacts_to_insert
+                    ]
+                    cur.executemany(insert_sql, insert_values)
+                    conn.commit()
+                    print(f"[TRANSFER] Inserted {cur.rowcount} contact(s) into lead_call_contact_details for lead {ret_lead_id}")
+                    cur.close()
+                except Exception as e:
+                    print(f"[TRANSFER] Failed to delete/insert contact details: {e}")
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                finally:
+                    try:
+                        if conn.is_connected():
+                            conn.close()
+                    except Exception:
+                        pass
+
+                return True
+
+    except Exception as e:
+        print(f"[TRANSFER] Exception during update_lead_to_external_api: {e}")
+        return False
 
 
 async def transfer_call(lead_id,to_number,transfer_type):
