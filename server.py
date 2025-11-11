@@ -633,22 +633,22 @@ async def handle_message():
             #await asyncio.sleep(0.5)
             
             # Send the specific audio_message as initial prompt
-            # initial_prompt = {
-            #     "type": "response.create",
-            #     "response": {
-            #         "modalities": ["audio", "text"],
-            #         "temperature": 0.8,
-            #         "instructions": (
-            #             f"Start with this exact phrase: '{audio_message}' "
-            #             f"Wait for the user to confirm their identity. "
-            #             f"IMPORTANT: Ignore any initial background audio, copyright notices, or system messages. "
-            #             f"Only respond to clear human speech after your introduction. "
-            #             f"Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
-            #         )
-            #     }
-            # }
-            # await openai_ws.send(json.dumps(initial_prompt))
-            #conversation_state['active_response'] = True  # Mark that we have an active response
+            initial_prompt = {
+                "type": "response.create",
+                "response": {
+                    "modalities": ["audio", "text"],
+                    "temperature": 0.8,
+                    "instructions": (
+                        f"Start with this exact phrase: '{audio_message}' "
+                        f"Wait for the user to confirm their identity. "
+                        f"IMPORTANT: Ignore any initial background audio, copyright notices, or system messages. "
+                        f"Only respond to clear human speech after your introduction. "
+                        f"Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+                    )
+                }
+            }
+            await openai_ws.send(json.dumps(initial_prompt))
+            conversation_state['active_response'] = True  # Mark that we have an active response
             
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
             
