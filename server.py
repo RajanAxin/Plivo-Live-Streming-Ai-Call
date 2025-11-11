@@ -26,7 +26,7 @@ PORT = 5000
 
 
 # fetch dynamic prompt
-def get_system_inbound_prompt():
+def get_system_prompt():
     """
     Fetch active inbound system prompt content
     Returns the content of the active inbound system prompt or None if not found
@@ -40,38 +40,6 @@ def get_system_inbound_prompt():
             cursor.execute("""
                 SELECT content FROM system_prompt 
                 WHERE type = 'Inbound' AND status = 'Active' 
-                LIMIT 1
-            """)
-            prompt_data = cursor.fetchone()
-            
-            return prompt_data['content'] if prompt_data else None
-            
-        except Exception as e:
-            print(f"Error fetching system prompt: {e}")
-            return None
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
-    else:
-        return None
-
-
-def get_system_outbound_prompt():
-    """
-    Fetch active inbound system prompt content
-    Returns the content of the active inbound system prompt or None if not found
-    """
-    conn = get_db_connection()
-    if conn:
-        try:
-            cursor = conn.cursor(dictionary=True, buffered=True)
-            
-            # Query system prompt data
-            cursor.execute("""
-                SELECT content FROM system_prompt 
-                WHERE type = 'Outbound' AND status = 'Active' 
                 LIMIT 1
             """)
             prompt_data = cursor.fetchone()
@@ -114,6 +82,7 @@ def load_conversation_flow(path="csvFile.csv"):
 
 def build_system_message(rules=None):
     """Build system message with dynamic rules integration"""
+    system_prompt = get_system_prompt()
     base_prompt = """
 You are a friendly, professional, emotionally aware virtual moving assistant. Your #1 goal is to connect the caller live to a moving representative for the best quote as soon as they agree.
 """
@@ -160,12 +129,12 @@ Never invent new questions.
 Never skip steps unless NextAction says so.
 """
     
-    return base_prompt  + dynamic_section + general_rules
+    return base_prompt + system_prompt + dynamic_section + general_rules
 
 # Usage
 rules = load_conversation_flow("csvFile.csv")
 SYSTEM_MESSAGE = build_system_message(rules)
-#print(SYSTEM_MESSAGE)
+print(SYSTEM_MESSAGE)
 
 app = Quart(__name__)
 
@@ -425,7 +394,6 @@ async def home():
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
-    lead_type = lead_data['type'] if lead_data else ''
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     
@@ -443,7 +411,6 @@ async def home():
     f"&amp;lead_id={lead_id}"
     f"&amp;t_lead_id={t_lead_id}"
     f"&amp;voice_name={voice_name}"
-    f"&amp;lead_type={lead_type}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
     f"&amp;brand_name={quote(brand_name)}"
     f"&amp;ai_agent_id={ai_agent_id}"  # Add ai_agent_id to the URL
@@ -583,14 +550,12 @@ async def handle_message():
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
     lead_phone = websocket.args.get('lead_phone', 'unknown')
-    lead_type = websocket.args.get('lead_type', 'unknown')
     print('audio_message', audio_message)
     print('voice_name', voice_name)
     print('ai_agent_id', ai_agent_id)
     print('lead_timezone', lead_timezone)
     print('ai_agent_name', ai_agent_name)
     print('lead_phone', lead_phone)
-    print('lead_type', lead_type)
     
     # Initialize conversation state
     conversation_state = {
@@ -619,7 +584,7 @@ async def handle_message():
                 cursor.execute("SELECT * FROM ai_agent_prompts WHERE ai_agent_id = %s and is_active = 1", (ai_agent_id,))
                 ai_agent_prompt = cursor.fetchone()
                 if ai_agent_prompt:
-                    prompt_text = get_system_outbound_prompt() if lead_type == "outbound" else get_system_inbound_prompt()
+                    prompt_text = get_system_prompt()
                     # If we have lead_id, fetch lead data and replace placeholders
                     if lead_id and lead_id != 'unknown':
                         try:
@@ -651,7 +616,7 @@ async def handle_message():
     
     # Combine with SYSTEM_MESSAGE
     prompt_to_use = prompt_text
-    #print(f"prompt_text: {prompt_to_use}")
+    print(f"prompt_text: {prompt_to_use}")
 
     url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
     headers = {
