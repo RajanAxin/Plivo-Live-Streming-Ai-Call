@@ -435,9 +435,9 @@ async def home():
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
     f"&amp;brand_name={quote(brand_name)}"
     f"&amp;ai_agent_id={ai_agent_id}"
-    f"&amp;lead_timezone={lead_timezone}",
-    f"&amp;site={site}",
-    f"&amp;server={server}",
+    f"&amp;lead_timezone={lead_timezone}"
+    f"&amp;site={site}"
+    f"&amp;server={server}"
     )              
     
     # XML response
