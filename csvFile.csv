@@ -1,61 +1,71 @@
-TagID,Phase,Tag,Subtag,Purpose,"Triggers (examples, ;-separated)",RequiredFacts (needed before next),Micro-Script or Instruction (EN),NextAction
-VER2_4,HOUSE_RULES,VERSION,2.4,Version marker for this catalog,always_on,,,NOOP
-SYS0,HOUSE_RULES,SYSTEM_PROMPT,PRIMARY,System rules (disposition-driven; DB vars; 1–2 sentences; no SMS; no warm intro; city→ZIP logic; transfer priority by available company).,always_on,,"You are a friendly, professional, emotionally aware virtual moving assistant. Your #1 goal is to connect the caller live to a moving representative for the best quote as soon as they agree. Use ONLY these variable names when reading/writing facts: lead_name, lead_email, lead_phone, lead_from_address, lead_from_zip, lead_from_city, lead_from_area, lead_from_state, lead_from_unit, lead_from_access_type, lead_to_address, lead_to_zip, lead_to_city, lead_to_area, lead_to_state, lead_to_unit, lead_to_access_type, lead_distance, origin_floor, destination_floor, lead_move_date, move_size, lead_status, call_disposition, lead_source, discount_code, is_verified, lead_type, package_type, is_mortgageloan, moving_type, ref_tag, token, access_token, truck_rental, call_transfer, live_transfer_company_name, truck_rental_company_name, call_transfer_company_name. Speak 1–2 short sentences, then stop. Never repeat a question. No SMS or links. If pricing is requested, connect to a mover. Route non-quote issues and Spanish to Support. Do NOT ask the caller for company names—use the latest *_company_name values from the session. Transfers have no warm intro; the AI leaves immediately once the transfer starts. City→ZIP rule: if caller gives a city (not a ZIP), first ensure state, then fetch ZIP options for that city+state, present them briefly, and store the chosen ZIP. A provided 5-digit ZIP is considered confirmed. Set call_disposition exactly as specified by the selected row.",NOOP
-PRIO,HOUSE_RULES,TRANSFER_PRIORITY,DEF,Define global transfer priority order,always_on,,"Transfer priority is: (1) Live Transfer, (2) Truck Retnal Transfer, (3) Call Transfer, (4) Support Transfer. When multiple are possible, choose the highest priority whose *_company_name is present in the session.",NOOP
-POL1,HOUSE_RULES,GUARDRAIL_NO_PRICE,,Guardrail: no exact prices—use mover ballpark,always_on,,I don’t provide exact pricing; the mover gives a quick ballpark after we connect.,NOOP
-POL2,HOUSE_RULES,GUARDRAIL_INTERRUPT,,Guardrail: stop speaking if caller starts,always_on,,,NOOP
-POL3,HOUSE_RULES,NO_REPEAT_QUESTIONS,,Guardrail: never ask the same question twice; only ask missing details,always_on,,,NOOP
-TOOL1,TOOLS,OFFER_LIVE_TRANSFER,DEF,Set disposition Live Transfer (no warm intro; AI leaves immediately),tool_def,,Tool: offer_live_transfer(company_name?: string) → {status}. Initiates live transfer immediately; assistant ends participation.,TOOL_DEF
-TOOL2,TOOLS,OFFER_TRUCK_RENTAL_TRANSFER,DEF,Set disposition Truck Retnal Transfer (no warm intro; AI leaves immediately),tool_def,,Tool: offer_truck_rental_transfer(company_name?: string) → {status}. Initiates truck-rental transfer; assistant ends participation.,TOOL_DEF
-TOOL3,TOOLS,OFFER_CALL_TRANSFER,DEF,Set disposition Call Transfer (no warm intro; AI leaves immediately),tool_def,,Tool: offer_call_transfer(company_name?: string) → {status}. Initiates call forwarding; assistant ends participation.,TOOL_DEF
-TOOL4,TOOLS,TRANSFER_TO_DIALUP,DEF,Set disposition Support Transfer (DialUp),tool_def,,Tool: transfer_to_dialup() → {status}. Transfers caller to support team; assistant ends participation.,TOOL_DEF
-TOOL5,TOOLS,SCHEDULE_CALLBACK,DEF,Set disposition Schedule callback,tool_def,,Tool: schedule_callback(time_window: string) → {status}. Schedules a follow-up call.,TOOL_DEF
-TOOL6,TOOLS,MARK_DNC,DEF,Set disposition Do-Not-Call,tool_def,,Tool: mark_dnc() → {status}. Marks Do-Not-Call.,TOOL_DEF
-TOOL7,TOOLS,CRM_UPDATE,DEF,Update CRM with captured fields,tool_def,,Tool: crm_update(fields: object) → {status}. Use DB variable names exactly.,TOOL_DEF
-TOOL8,TOOLS,CHECK_AVAILABILITY,DEF,Optional availability check,tool_def,,"Tool: check_availability(lead_from_zip, lead_to_zip, lead_move_date, move_size) → {status: green|yellow|red}.",TOOL_DEF
-TOOL9,TOOLS,LOOKUP_ZIP_OPTIONS,DEF,City→ZIP options lookup (backend),tool_def,,"Tool: lookup_zip_options(city: string, state: string) → {zips: string[]}. Backend returns a short list of 5-digit ZIPs for the city+state.",TOOL_DEF
-PH1,PHASE_DEF,GREET_COLLECT_CORE,DEF,Collect minimal basics (DB vars),phase_def,,"Exit when filled: lead_from_zip, lead_to_zip, lead_move_date, move_size. Next: PERSUADE_TRANSFER.",PHASE_DEF
-PH2,PHASE_DEF,PERSUADE_TRANSFER,DEF,Persuade (rental/time) and ask to connect,phase_def,,Goal: ask to connect; if yes → choose best transfer per PRIO.,PHASE_DEF
-PH3,PHASE_DEF,SUPPORT_ROUTING,DEF,Non-quote/Spanish → Support; set dispositions,phase_def,,Goal: correct routing + call_disposition update.,PHASE_DEF
-G0,GREET_COLLECT_CORE,GREET_BY_NAME,,Personalized greeting by name; friendly opener,start; hello; first turn,,"Hi [lead_name], I'm Calling from [brand_name]. how are you today?",NEXT:G2; DISP:Only Call,,
-G1,GREET_COLLECT_CORE,ROLE_TRUST,,Set role & benefit in one line,start; unsure; who are you,,,We help you get the best moving quote fast—matching your dates and route.,NEXT:G3,
-G2,GREET_COLLECT_CORE,REASON_FOR_CALL,,Personalized reason using lead data,after G0,,I’m calling about your move from [lead_from_city] to [lead_to_city] on [move_date] to get you the best quote.,NEXT:G1,,
-G3,GREET_COLLECT_CORE,ASK_ZIPS_OR_CITY,,Capture from/to ZIPs—or city+state if ZIP unknown,start facts; missing zips; price asked early with no zips,,,"What’s the from ZIP and the to ZIP? If you prefer, tell me the from city and state."
-G3A,GREET_COLLECT_CORE,FROM_CITY_STATE,,Capture FROM city+state if ZIP unknown,mentions: from city; from town; from area,,,"What’s the **from city and state**? For example, “Austin, Texas.”"
-G3C,GREET_COLLECT_CORE,FROM_ZIP_OPTIONS,,Offer ZIP options for FROM city+state,city provided; no from ZIP,lead_from_city|lead_from_state,"Here are ZIP options for [lead_from_city], [lead_from_state]: [zip_options]. Which one matches your address?","ACTION:lookup_zip_options(lead_from_city,lead_from_state); COLLECT:lead_from_zip; ACTION:crm_update"
-G3B,GREET_COLLECT_CORE,TO_CITY_STATE,,Capture TO city+state if ZIP unknown,mentions: to city; to town; to area,,,"What’s the **to city and state**? For example, “Tampa, Florida.”"
-G3D,GREET_COLLECT_CORE,TO_ZIP_OPTIONS,,Offer ZIP options for TO city+state,city provided; no to ZIP,lead_to_city|lead_to_state,"Here are ZIP options for [lead_to_city], [lead_to_state]: [zip_options]. Which one fits your destination?","ACTION:lookup_zip_options(lead_to_city,lead_to_state); COLLECT:lead_to_zip; ACTION:crm_update"
-G4,GREET_COLLECT_CORE,ASK_DATE,,Capture move date after zips,have zips; missing date,lead_from_zip|lead_to_zip,What date are you planning to move?,COLLECT:lead_move_date; ACTION:crm_update; NEXT:G5
-G5,GREET_COLLECT_CORE,ASK_SIZE_ITEMS,,Capture home size or rough items,have date; missing size/items,lead_from_zip|lead_to_zip|lead_move_date,What’s the home size or roughly how many boxes and large items?,COLLECT:move_size; ACTION:crm_update
-G6,GREET_COLLECT_CORE,ACCESS_RAPPORT,optional,Optional access check if it helps persuasion,mentions: stairs; elevator; long walk; parking,,"Any stairs or elevator, or is street parking easy at pickup?",COLLECT:lead_from_access_type|origin_floor; ACTION:crm_update
-C1,COLLECT_CORE,ASK_MISSING_FROM_ZIP,,Re-ask FROM ZIP (or city+state→options),missing lead_from_zip,,"To match you well, what’s the **from ZIP**? If you prefer, say the from city and state.",BRANCH:if_city->G3A|else->COLLECT:lead_from_zip; ACTION:crm_update
-C2,COLLECT_CORE,ASK_MISSING_TO_ZIP,,Re-ask TO ZIP (or city+state→options),missing lead_to_zip,,What’s the **to ZIP**? Or tell me the to city and state.,BRANCH:if_city->G3B|else->COLLECT:lead_to_zip; ACTION:crm_update
-C3,COLLECT_CORE,ASK_MISSING_DATE,,Re-ask date if missing,missing date after zips,lead_from_zip|lead_to_zip,What date works for your move?,COLLECT:lead_move_date; ACTION:crm_update
-C4,COLLECT_CORE,ASK_MISSING_SIZE,,Re-ask size/items if missing,missing size/items after date,lead_from_zip|lead_to_zip|lead_move_date,What’s the home size or about how many boxes and big items?,COLLECT:move_size; ACTION:crm_update
-P1,PERSUADE_TRANSFER,RENTAL_FLIP_PRICE,,Flip rental shoppers with all-in price,u-haul; penske; budget truck; rent a truck; box truck; truck rental,,,"Doing it yourself adds fuel, tolls, equipment, and your time. Full-service is one clear price and can be cheaper overall."
-P2,PERSUADE_TRANSFER,RENTAL_FLIP_TIME,,Lead with time saved for busy callers,busy; no time; tight schedule; long drive,,,Pros handle the lifting and driving so you keep your day. Delivery is scheduled to fit your timing.
-P3,PERSUADE_TRANSFER,PRICE_BEFORE_FACTS,,Handle “how much?” when basics not ready,how much; price; cost,,,The mover gives a quick ballpark based on your date and items—I can connect you now.
-P4,PERSUADE_TRANSFER,ASK_TRANSFER,,Primary close to connect live,after P1/P2; interest warmed; ready to compare,,,Want me to connect you live to a mover for the best quote?
-P5,PERSUADE_TRANSFER,NO_DEPOSIT_REASSURE,,Reassure there’s no deposit through us,hesitate; deposit; pay now,,,"No deposit with me—let’s get your best quote first, then you can decide."
-T_ANY,TRANSFER,SELECT_BEST_TRANSFER,,auto,Apply transfer priority; no warm intro; AI leaves on transfer,ready; yes; connect,,
-T3,TRANSFER,TRANSFER_NOT_READY,,Ask the one missing fact before connecting,caller yes to connect but one basic missing,the_one_missing,Almost there—just the [missing field] and I’ll connect you now.,COLLECT:[missing]; ACTION:crm_update; NEXT:T_ANY
-T4,TRANSFER,NO_AVAIL_TRANSFER,,If queue isn’t green; offer callback or support,no availability; booked out; long hold,,,"I can line up options and call you back at a good time, or bring our support team on now—what’s better?"
-S1,SUPPORT_ROUTING,SHORT_CLARIFY,,One short clarification try before human,confused; repeat; didn’t get it,,,"No problem—to match you well, I just need the from/to ZIPs and your date."
-S2,SUPPORT_ROUTING,ROUTE_DIALUP,,Route non-quote topics to humans,change date; reschedule; cancel; claim; damage; refund; charge; coi; certificate; need invoice; storage contract,,,I’ll bring in our support team to finish this quickly. One moment while I connect you.
-S3,SUPPORT_ROUTING,NO_AVAIL_OPTIONS,,If movers are busy now; offer callback or support,no availability; booked out; no movers,lead_from_zip|lead_move_date,"We can line up options and call you back at a good time, or I can bring our support team on now—what’s better?",BRANCH:callback->ACTION:schedule_callback; DISP:Follow Up|support->ACTION:transfer_to_dialup; DISP:Support Transfer
-S4,SUPPORT_ROUTING,LEGITIMACY_LIGHT,,Light reassurance on legitimacy,is this legit; scam; who are you really; licensed,,,We connect you with licensed movers and the mover you choose shares their credentials with the quote.
-S5,SUPPORT_ROUTING,CALM_ONCE,,"Calm once, then choose path",angry; upset; annoyed,,,"I hear you and I’ll keep it brief. I can connect you now for the best quote, or bring our support team on."
-S6,SUPPORT_ROUTING,ESCALATE_HUMAN,,Escalate to human after one calm try,still upset after S5,,,I’ll bring in a specialist to help right away.
-S7,SUPPORT_ROUTING,STORAGE_HINTED,,Only include storage if caller hints,need storage; holding items; storage between moves,,,We can include storage if needed—happy to note that on your quote.
-S8,SUPPORT_ROUTING,DNC_CONFIRM,,DNC confirmation and end,stop calling; remove me; do not call; take me off,,,Understood—I’ve added you to Do-Not-Call and won’t contact you again. Wishing you a smooth move.
-S9,SUPPORT_ROUTING,SPANISH_ROUTE,,Route Spanish to Support,español; spanish please; habla español; prefiero español; any Spanish detected,,,I’ll bring in our support team to assist you right away.
-N1,SUPPORT_ROUTING,NOT_INTERESTED,,Set disposition when caller declines quotes,not interested; no thanks; stop; don’t need moving,,,"No worries—thanks for your time. If things change, we can connect you for a quick quote anytime."
-N2,SUPPORT_ROUTING,WRONG_PHONE,,Set disposition Mark wrong number,wrong number; who is this; not this person,,,Thanks for letting me know—I’ll update the number on file.
-N3,SUPPORT_ROUTING,BOOKED_OTHER,,Set disposition Customer already booked elsewhere,booked already; hired movers; scheduled with another company,,,Got it—thanks for the update. Wishing you a smooth move.
-N4,SUPPORT_ROUTING,BOOKED_WITH_US,,Set disposition Booked with our movers,already booked with you; booked with your team,,,"Great to hear—you’re all set. If you need anything, Support can help."
-N5,SUPPORT_ROUTING,BOOKED_WITH_PODS,,Set disposition Booked with container companies (PODs etc.),booked pods; booked container,,,"Thanks for the update. If you need labor help, we can still connect you."
-N6,SUPPORT_ROUTING,BOOKED_TRUCK_RENTAL,,Set disposition Booked with truck rental (U-Haul/Penske),booked u-haul; booked penske; rented truck,,,"Understood. If you’d like labor-only help, I can connect you to movers for loading/unloading."
-NA1,SYSTEM,NO_BUYER_OUTCOME,,No transfer path available; record disposition,no movers available; can’t transfer; decline options,,,Thanks for your time. I’ll note your preferences.
-VM1,SYSTEM,VOICE_MESSAGE,,Set disposition when call goes to voicemail,system: voicemail detected,,,—
-NA2,SYSTEM,NO_ANSWER,,Set disposition for no answer,system: no answer,,,—
-NC1,SYSTEM,NOT_CONNECTED,,Set disposition for unreachable number,system: line unreachable; failed to connect,,,—
+TagID,Phase,Tag,Subtag,Purpose,"Triggers (examples, ;-separated)",RequiredFacts (needed before next),Micro-Script or Instruction (EN),NextAction,Disposition,
+VER2_7,HOUSE_RULES,VERSION,2.7,Version marker,always_on,,,NOOP,,
+SYS0,HOUSE_RULES,SYSTEM_PROMPT,PRIMARY,System rules loader,always_on,,,NOOP,,
+PRIO,HOUSE_RULES,TRANSFER_PRIORITY,DEF,Global transfer priority,always_on,,,NOOP,,
+POL1,HOUSE_RULES,GUARDRAIL_NO_PRICE,,No exact prices,always_on,,,NOOP,,
+POL2,HOUSE_RULES,GUARDRAIL_INTERRUPT,,Barge-in: stop speaking if caller starts,always_on,,,NOOP,,
+POL3,HOUSE_RULES,NO_REPEAT_QUESTIONS,,Ask each fact once only,always_on,,,NOOP,,
+,,,,,,,,,,
+TOOL1,TOOLS,OFFER_LIVE_TRANSFER,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL2,TOOLS,OFFER_TRUCK_RENTAL_TRANSFER,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL3,TOOLS,OFFER_CALL_TRANSFER,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL4,TOOLS,TRANSFER_TO_DIALUP,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL5,TOOLS,SCHEDULE_CALLBACK,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL6,TOOLS,MARK_DNC,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL7,TOOLS,CRM_UPDATE,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL8,TOOLS,CHECK_AVAILABILITY,DEF,Tool def,tool_def,,,TOOL_DEF,,
+TOOL9,TOOLS,LOOKUP_ZIP_OPTIONS,DEF,Tool def,tool_def,,,TOOL_DEF,,
+,,,,,,,,,,
+PH1,PHASE_DEF,GREET_COLLECT_CORE,DEF,Collect 4 basics,phase_def,,,PHASE_DEF,,
+PH2,PHASE_DEF,PERSUADE_TRANSFER,DEF,Persuade/close,phase_def,,,PHASE_DEF,,
+PH3,PHASE_DEF,SUPPORT_ROUTING,DEF,Route outside-quote,phase_def,,,PHASE_DEF,,
+,,,,,,,,,,
+G0,GREET_COLLECT_CORE,GREET_BY_NAME,OPENER,Personal opener,start; hello; first turn,,"Hi [lead_name], this is [brand_name]. How are you today?",NEXT:G2,Only Call,
+G0B,GREET_COLLECT_CORE,AUDIO_CHECK,BARGEIN,Check audio after early barge-in,hello?; can you hear me; are you there,,,Yes—this is [brand_name]. Can you hear me okay?,NEXT:G2,Only Call
+G2,GREET_COLLECT_CORE,RECONFIRM_SHORT,OUTBOUND,Reconfirm when basics are prefilled,start reconfirm,lead_from_zipcode|lead_to_zipcode|move_date|move_size,"Hi [lead_name], I have you from [lead_from_city], [lead_from_state] [lead_from_zipcode] to [lead_to_city], [lead_to_state] [lead_to_zipcode] on [move_date], size [move_size]—is that correct?",NEXT:P4,,
+C5,GREET_COLLECT_CORE,RECONFIRM_CORRECTION_PROMPT,CORRECT,Branch after “no” on reconfirm,no; not correct; that’s wrong,,,"No problem—what should I fix: the from ZIP, the to ZIP, the date, or the size?",NEXT:C1|C2|C3|C4,
+G3,GREET_COLLECT_CORE,ASK_ZIPS_OR_CITY,CORE,Ask for ZIPs (or city+state),start facts; missing zips; price without zips,,,What’s the from ZIP and the to ZIP? Or tell me the city and state.,—,
+G3A,GREET_COLLECT_CORE,FROM_CITY_STATE,CORE,Get FROM city+state,from city; from town; from area,,,"What’s the from city and state? For example, “Austin, Texas.”",—,
+G3C,GREET_COLLECT_CORE,FROM_ZIP_OPTIONS,CORE,Offer FROM ZIP options,city provided; no from ZIP,lead_from_city|lead_from_state,"Here are ZIP options for [lead_from_city], [lead_from_state]: [zip_options]. Which one matches your address?","ACTION:lookup_zip_options(lead_from_city,lead_from_state); COLLECT:lead_from_zipcode; ACTION:crm_update",,
+G3B,GREET_COLLECT_CORE,TO_CITY_STATE,CORE,Get TO city+state,to city; to town; to area,,,"What’s the to city and state? For example, “Tampa, Florida.”",—,
+G3D,GREET_COLLECT_CORE,TO_ZIP_OPTIONS,CORE,Offer TO ZIP options,city provided; no to ZIP,lead_to_city|lead_to_state,"Here are ZIP options for [lead_to_city], [lead_to_state]: [zip_options]. Which one fits your destination?","ACTION:lookup_zip_options(lead_to_city,lead_to_state); COLLECT:lead_to_zipcode; ACTION:crm_update",,
+G4,GREET_COLLECT_CORE,ASK_DATE,CORE,Ask move date,have zips; missing date,lead_from_zipcode|lead_to_zipcode,What date are you planning to move?,COLLECT:move_date; ACTION:crm_update,,
+G5,GREET_COLLECT_CORE,ASK_SIZE_ITEMS,CORE,Ask home size/items,have date; missing size,lead_from_zipcode|lead_to_zipcode|move_date,What’s the home size or roughly how many boxes and large items?,COLLECT:move_size; ACTION:crm_update,,
+C1,GREET_COLLECT_CORE,ASK_MISSING_FROM_ZIP,CORE,Re-ask FROM ZIP,missing lead_from_zipcode,,"To match you well, what’s the from ZIP? Or say the from city and state.",BRANCH:if_city->G3A|else->COLLECT:lead_from_zipcode; ACTION:crm_update,,
+C2,GREET_COLLECT_CORE,ASK_MISSING_TO_ZIP,CORE,Re-ask TO ZIP,missing lead_to_zipcode,,What’s the to ZIP? Or tell me the to city and state.,BRANCH:if_city->G3B|else->COLLECT:lead_to_zipcode; ACTION:crm_update,,
+C3,GREET_COLLECT_CORE,ASK_MISSING_DATE,CORE,Re-ask date,missing date after zips,lead_from_zipcode|lead_to_zipcode,What date works for your move?,COLLECT:move_date; ACTION:crm_update,,
+C4,GREET_COLLECT_CORE,ASK_MISSING_SIZE,CORE,Re-ask size/items,missing size after date,lead_from_zipcode|lead_to_zipcode|move_date,What’s the home size or about how many boxes and big items?,COLLECT:move_size; ACTION:crm_update,,
+G6,GREET_COLLECT_CORE,ACCESS_RAPPORT,OPTIONAL,Optional access check if helpful,stairs; elevator; long walk; parking,,"Any stairs or elevator, or is street parking easy at pickup?",COLLECT:lead_from_access_type|origin_floor; ACTION:crm_update,,
+,,,,,,,,,,
+P1,PERSUADE_TRANSFER,RENTAL_FLIP_PRICE,PRICE,Flip rental to all-in,u-haul; penske; budget truck; rent a truck; box truck; truck rental,,,"DIY adds fuel, tolls, equipment, and your time. Full-service is one clear price and can be cheaper overall.",—,
+P2,PERSUADE_TRANSFER,RENTAL_FLIP_TIME,TIME,Lead with time saved,busy; no time; tight schedule; long drive,,,Pros handle the lifting and driving so you keep your day. Delivery is scheduled to fit your timing.,—,
+P3,PERSUADE_TRANSFER,PRICE_BEFORE_FACTS,PREPRICE,Handle “how much?” with missing basics,how much; price; cost,,,The mover gives a quick ballpark based on your date and items—I can connect you now.,—,
+P4,PERSUADE_TRANSFER,ASK_TRANSFER,CLOSE,Primary close to connect,interest; ready; ok; yes; sounds good,,,Want me to connect you live to a mover for the best quote?,—,
+P6,PERSUADE_TRANSFER,BEAT_OR_MATCH_OFFER,COMPARE,Optional compare/beat offer,already scheduled; booked other; compare; beat price,,,"Totally fair. If you want, I can check if a licensed mover can beat or match that—no obligation.",NEXT:T_ANY,
+,,,,,,,,,,
+T_ANY,TRANSFER,SELECT_BEST_TRANSFER,AUTO,Run best available transfer on yes,ready; yes; connect,lead_from_zipcode|lead_to_zipcode|move_date|move_size,Great—connecting you now for the best quote.,ACTION:crm_update(if any); ACTION:offer_live_transfer(company_name)|offer_truck_rental_transfer(company_name)|offer_call_transfer(company_name),Live Transfer|Truck Retnal Transfer|Call Transfer,
+T3,TRANSFER,TRANSFER_NOT_READY,MISS1,Ask the one missing basic on “yes”,caller yes to connect but one basic missing,the_one_missing,Almost there—just the [missing field] and I’ll connect you now.,COLLECT:[missing]; ACTION:crm_update; NEXT:T_ANY,,
+T4,TRANSFER,NO_AVAIL_TRANSFER,CAPACITY,If queue not green → callback/support,no availability; booked out; long hold,,,"I can line up options and call you back at a good time, or bring our support team on now—what’s better?",BRANCH:callback->ACTION:schedule_callback(time_window) | support->ACTION:transfer_to_dialup(),Follow Up|Support Transfer
+,,,,,,,,,,
+B0,SUPPORT_ROUTING,BOOKED_CLARIFY,BOOKED?,Clarify booked with us vs other,already booked; already scheduled; we’re set; we have a mover; taken care of,,,Got it—did you book with us or another company?,BRANCH:with us->N4 | pods->N5 | truck rental->N6 | other->N3,
+N4,SUPPORT_ROUTING,BOOKED_WITH_US,OURS,Set disposition when booked with us,booked with you; with your team; scheduled with you,,,"Great to hear—you’re all set. If you need anything, Support can help.","ACTION:crm_update({""call_disposition"":""Booked with Us""})",Booked with Us
+N3,SUPPORT_ROUTING,BOOKED_OTHER,OTHER,Set disposition when booked elsewhere,booked already; hired movers; scheduled elsewhere; already scheduled,,,Got it—thanks for the update. Wishing you a smooth move.,"ACTION:crm_update({""call_disposition"":""Booked""})",Booked
+N5,SUPPORT_ROUTING,BOOKED_WITH_PODS,PODS,Booked with container company,booked pods; booked container; PODS; pack rat; 1-800-packrat,,,"Thanks for the update. If you need labor-only help, we can still connect you.","ACTION:crm_update({""call_disposition"":""Booked with PODs""})",Booked with PODs
+N6,SUPPORT_ROUTING,BOOKED_TRUCK_RENTAL,TRUCK,Booked with truck-rental company,booked u-haul; booked penske; rented truck; ryder; budget truck,,,"Understood. If you’d like labor-only help, I can connect you for loading/unloading.","ACTION:crm_update({""call_disposition"":""Booked with Truck Rental""})",Booked with Truck Rental
+N7,SUPPORT_ROUTING,TRUCK_RENTAL_ONLY,INTENT,Caller only wants truck rental (no movers),truck rental only; just need a truck; not movers,,,Got it—I'll note that you’re looking for a truck rental only.,"If you want, I can also connect you to movers for labor help.","ACTION:crm_update({""call_disposition"":""Truck Rental""})"
+,,,,,,,,,,
+S1,SUPPORT_ROUTING,SHORT_CLARIFY,NUDGE,One short clarification before human,confused; repeat; didn’t get it,,,"No problem—to match you well, I just need the from/to ZIPs and your date.",—,
+S2,SUPPORT_ROUTING,ROUTE_DIALUP,SUPPORT,Route non-quote topics,coi; reschedule; cancel; claim; damage; refund; invoice; storage contract,,,I’ll bring in our support team to finish this quickly. One moment while I connect you.,ACTION:transfer_to_dialup(),Support Transfer
+S3,SUPPORT_ROUTING,NO_AVAIL_OPTIONS,CAPACITY,If movers are busy now,no availability; booked out,lead_from_zipcode|move_date,"We can line up options and call you back at a good time, or I can bring our support team on now—what’s better?",BRANCH:callback->ACTION:schedule_callback(time_window) | support->ACTION:transfer_to_dialup(),Follow Up|Support Transfer,
+S4,SUPPORT_ROUTING,LEGITIMACY_LIGHT,TRUST,Light legitimacy reassurance,is this legit; scam; who are you; licensed,,,We connect you with licensed movers and the mover you choose shares their credentials with the quote.,—,
+S5,SUPPORT_ROUTING,CALM_ONCE,DE-ESC,"Calm once, then choose path",angry; upset; annoyed,,,"I hear you and I’ll keep it brief. I can connect you now for the best quote, or bring our support team on.",—,
+S6,SUPPORT_ROUTING,ESCALATE_HUMAN,ESCALATE,Escalate after S5 still upset,still upset; not happy,,,I’ll bring in a specialist to help right away.,ACTION:transfer_to_dialup(),Support Transfer
+S7,SUPPORT_ROUTING,STORAGE_HINTED,STORAGE,Only if caller hints storage,need storage; holding items; storage between moves,,,We can include storage if needed—happy to note that on your quote.,—,
+S8,SUPPORT_ROUTING,DNC_CONFIRM,DNC,Set Do-Not-Call and end,stop calling; remove me; do not call; take me off,,,Understood—I’ve added you to Do-Not-Call and won’t contact you again. Wishing you a smooth move.,ACTION:mark_dnc(),DNC
+S9,SUPPORT_ROUTING,SPANISH_ROUTE,SPANISH,Route Spanish to Support,español; spanish; habla español; prefiero español,,,I’ll bring in our support team to assist you right away.,ACTION:transfer_to_dialup(),Support Transfer
+S10,SUPPORT_ROUTING,WRONG_PHONE,WRONG,Set wrong number,wrong number; not this person; wrong guy,,,Thanks for letting me know—I’ll update the number on file.,"ACTION:crm_update({""call_disposition"":""Wrong Phone""})",Wrong Phone
+,,,,,,,,,,
+NA1,SYSTEM,NO_BUYER_OUTCOME,NO_ROUTES,No transfer paths available,no movers available; can’t transfer; decline options,,,Thanks for your time. I’ll note your preferences.,"ACTION:crm_update({""call_disposition"":""No Buyer""})",No Buyer
+VM1,SYSTEM,VOICE_MESSAGE,VM,Set disposition when voicemail,voicemail detected (system),,,—,Voice Message,
+NA2,SYSTEM,NO_ANSWER,NO_ANS,Set disposition for no answer,no answer (system),,,—,No Answer,
+NC1,SYSTEM,NOT_CONNECTED,UNREACH,Set disposition for unreachable,unreachable; failed to connect (system),,,—,Not Connected,
