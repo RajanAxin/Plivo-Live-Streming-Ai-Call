@@ -417,6 +417,8 @@ async def home():
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
+    site = lead_data['site'] if lead_data else 'PM'
+    server = lead_data['server'] if lead_data else 'Stag'
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     
@@ -433,7 +435,9 @@ async def home():
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
     f"&amp;brand_name={quote(brand_name)}"
     f"&amp;ai_agent_id={ai_agent_id}"
-    f"&amp;lead_timezone={lead_timezone}"
+    f"&amp;lead_timezone={lead_timezone}",
+    f"&amp;site={site}",
+    f"&amp;server={server}",
     )              
     
     # XML response
@@ -561,6 +565,8 @@ async def handle_message():
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
     lead_phone = websocket.args.get('lead_phone', 'unknown')
+    site = websocket.args.get('site', 'unknown')
+    server = websocket.args.get('server', 'unknown')
     print('audio_message', audio_message)
     print('voice_name', voice_name)
     print('ai_agent_id', ai_agent_id)
@@ -574,6 +580,8 @@ async def handle_message():
         'current_ai_text': '',
         'lead_id': lead_id,
         't_lead_id': t_lead_id,
+        'site': site,
+        'server': server,
         'call_uuid': websocket.args.get('CallUUID', 'unknown'),
         'from_number': websocket.args.get('From', ''),
         'to_number': websocket.args.get('To', ''),
@@ -969,15 +977,13 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             print(f'Collected facts: {collected_facts}')
             print(f'Disposition status: {disposition_status}')
             lead_id = conversation_state['lead_id']
-            lead_phone = conversation_state['lead_phone']
-            to_number = conversation_state['to_number']
             t_lead_id = conversation_state['t_lead_id']
             if disposition_status and disposition_status.get('value'):
                 if disposition_status['value'] == 'Live Transfer':
-                    await transfer_call(lead_id, to_number,1)
+                    await transfer_call(lead_id,1,conversation_state['site'],conversation_state['server'])
                     print("Processing Live Transfer...")
                 elif disposition_status['value'] == 'Truck Retnal Transfer' or disposition_status['value'] == 'Truck Rental Transfer':
-                    await transfer_call(lead_id, to_number,2)
+                    await transfer_call(lead_id,2,conversation_state['site'],conversation_state['server'])
                     print("Processing Truck Retnal Transfer...")
                 elif disposition_status['value'] == 'Support Transfer':
                     print("Processing Support Transfer...")
@@ -989,7 +995,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 print("Disposition status is empty or not set")
 
             if collected_facts:
-                updated = await update_lead_from_collected_facts(lead_id,t_lead_id,lead_phone, to_number, collected_facts,conversation_state['call_uuid'])
+                updated = await update_lead_from_collected_facts(lead_id,t_lead_id, collected_facts,conversation_state['call_uuid'],conversation_state['site'],conversation_state['server'])
                 if updated:
                     print(f"[LEAD_UPDATE] Lead {lead_id} updated successfully")
                 else:
@@ -1159,7 +1165,7 @@ def function_call_output(arg, item_id, call_id):
     }
     return conversation_item
 
-async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_number, collected_facts,call_uuid):
+async def update_lead_from_collected_facts(lead_id,t_lead_id, collected_facts,call_uuid,site,server):
     try:
         print(f"[DEBUG] Starting update for lead_id: {lead_id}")
         print(f"[DEBUG] t_lead_id: {t_lead_id}")
@@ -1241,7 +1247,7 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
                 api_update_data['move_size_id'] = collected_facts['lead_move_size']
 
 
-        api_success = await update_lead_to_external_api(api_update_data,lead_phone, to_number,call_uuid, lead_id)
+        api_success = await update_lead_to_external_api(api_update_data,call_uuid, lead_id,site,server)
         print(f"[TRANSFER] API call result: {api_success}")
 
         print(f"[DEBUG] Update data to be saved: {update_data}")
@@ -1294,7 +1300,7 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
             conn.close()
         return False
 
-async def update_lead_to_external_api(api_update_data, lead_phone, to_number, call_u_id, lead_id):
+async def update_lead_to_external_api(api_update_data, call_u_id, lead_id,site,server):
     """
     Sends api_update_data to external updateailead endpoint and if the response
     contains live_transfer / truck_rental, delete existing rows for the lead & call_types
@@ -1305,16 +1311,16 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number, ca
     print("[TRANSFER] Updating lead to external API", api_update_data)
     try:
         # choose URL
-        if to_number == "12176186806":
-            if lead_phone in ("6025298353", "6263216095"):
-                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/updateailead"
-            else:
+        if site == "ZAP":
+            if server == "Prod":
                 url = "https://zapprod:zap2024@zap.snapit.software/api/updateailead"
-        else:
-            if lead_phone in ("6025298353", "6263216095"):
-                url = "https://snapit:mysnapit22@stage.linkup.software/api/updateailead"
             else:
+                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/updateailead"
+        else:
+            if server == "Prod":
                 url = "https://linkup:newlink_up34@linkup.software/api/updateailead"
+            else:
+                url = "https://snapit:mysnapit22@stage.linkup.software/api/updateailead"
 
         print(f"[TRANSFER] Using URL: {url}")
 
@@ -1439,7 +1445,7 @@ async def update_lead_to_external_api(api_update_data, lead_phone, to_number, ca
         return False
 
 
-async def transfer_call(lead_id,to_number,transfer_type):
+async def transfer_call(lead_id,transfer_type,site,server):
         try:
             print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
             
@@ -1485,19 +1491,17 @@ async def transfer_call(lead_id,to_number,transfer_type):
             
             print(f"[TRANSFER] Payload: {payload}")
             # Determine URL based on phone number
-            if to_number == "12176186806":
-                # Determine URL based on phone number
-                if lead_data['phone'] in ("6025298353", "6263216095"):
-                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
-                else:
+
+            if site == "ZAP":
+                if server == "Prod":
                     url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
-                print(f"[TRANSFER] Using URL: {url}")
-            else:
-                print("to_number is not 12176186806")
-                if lead_data['phone'] in ("6025298353", "6263216095"):
-                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                 else:
+                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+            else:
+                if server == "Prod":
                     url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+                else:
+                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
             
             print(f"[TRANSFER] Using URL: {url}")
             
