@@ -24,7 +24,34 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your .env file")
 PORT = 5000
 
+# -------------------- Safe cancel helper --------------------
+async def safe_cancel_response(openai_ws, conversation_state):
+    """
+    Send response.cancel only if conversation_state indicates an active response.
+    Uses an asyncio.Lock if present to avoid concurrent state races.
+    """
+    try:
+        lock = conversation_state.get('_active_response_lock')
+        if lock is not None:
+            async with lock:
+                active = conversation_state.get('active_response', False)
+        else:
+            active = conversation_state.get('active_response', False)
 
+        if active:
+            cancel_payload = {"type": "response.cancel"}
+            try:
+                await openai_ws.send(json.dumps(cancel_payload))
+                # Do NOT forcibly flip active_response to False here; let server emit response.cancelled/response.done
+                print("[LOG] Sent response.cancel")
+            except Exception as e:
+                print(f"[LOG] Failed sending response.cancel: {e}")
+        else:
+            print("[LOG] Skipping response.cancel — no active response flag")
+    except Exception as e:
+        print(f"[LOG] safe_cancel_response unexpected error: {e}")
+
+# -------------------- Conversation flow helpers --------------------
 # fetch dynamic prompt
 def get_system_prompt():
     """
@@ -57,7 +84,6 @@ def get_system_prompt():
     else:
         return None
 
-
 def load_conversation_flow(path="csvFile.csv"):
     """Load the conversation flow from CSV file"""
     rules = []
@@ -82,9 +108,10 @@ def load_conversation_flow(path="csvFile.csv"):
 
 def build_system_message(rules=None):
     """Build system message with dynamic rules integration"""
-    system_prompt = get_system_prompt()
+    system_prompt = get_system_prompt() or ""
     base_prompt = """
 You are a friendly, professional, emotionally aware virtual moving assistant. Your #1 goal is to connect the caller live to a moving representative for the best quote as soon as they agree.
+CRITICAL REQUIREMENT: For EVERY response you generate, you MUST use the custom_tool_response function with the exact JSON structure. Never respond without using this function.
 """
     
     # Add dynamic rules section if rules are provided
@@ -129,7 +156,7 @@ Never invent new questions.
 Never skip steps unless NextAction says so.
 """
     
-    return base_prompt + system_prompt + dynamic_section + general_rules
+    return base_prompt + "\n\n" + system_prompt + "\n\n" + dynamic_section + "\n\n" + general_rules
 
 # Usage
 rules = load_conversation_flow("csvFile.csv")
@@ -137,8 +164,6 @@ SYSTEM_MESSAGE = build_system_message(rules)
 print(SYSTEM_MESSAGE)
 
 app = Quart(__name__)
-
-
 
 def download_file(url, save_as="input.mp3"):
     """Download MP3 from URL"""
@@ -154,7 +179,7 @@ def transcribe(file_path):
     """Transcribe audio using OpenAI Whisper"""
     with open(file_path, "rb") as f:
         transcript = openai.audio.transcriptions.create(
-            model="whisper-1",  # or "whisper-1"
+            model="whisper-1",
             file=f
         )
     return transcript.text
@@ -162,7 +187,7 @@ def transcribe(file_path):
 def segment_speakers(transcript_text: str):
     """Ask GPT to split transcript into Agent/Customer speakers"""
     response = openai.chat.completions.create(
-        model="gpt-4o-mini",  # lightweight + fast
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a call transcript formatter."},
             {"role": "user", "content": f"""
@@ -204,7 +229,6 @@ def segment_speakers(transcript_text: str):
     )
     return response.choices[0].message.content
 
-
 @app.get("/disposition_process")
 def disposition_process():
     try:
@@ -221,7 +245,7 @@ def disposition_process():
         # Parse the JSON string to a Python dictionary
         result_dict = json.loads(result_json)
         
-        # Return the parsed dictionary (FastAPI will automatically convert to JSON)
+        # Return the parsed dictionary
         return result_dict
         
     except Exception as e:
@@ -367,12 +391,10 @@ async def home():
                     if voice:
                         ai_agent_name = mst_brand_data['full_name']
                 
-                
                 if lead_data and lead_data['type'] == "outbound":
                     if lead_data.get('name'):
                         lead_user_name = lead_data.get('name')
                         brand_name = f"{ai_agent_name}"
-                        #audio_message = f"HI, This is jason from {ai_agent_name}. how are you {lead_user_name}?"
                         audio_message = f"Hi {lead_user_name}, I'm Calling from {ai_agent_name}. how are you?"
                     else:
                         brand_name = f"{ai_agent_name}"
@@ -397,10 +419,6 @@ async def home():
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     
-    # Note: We're no longer storing the prompt in a global dictionary
-    
-    # print(f"lead_id: {lead_id}")
-    
     ws_url = (
     f"wss://{request.host}/media-stream?"
     f"audio_message={quote(audio_message)}"
@@ -413,8 +431,8 @@ async def home():
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
     f"&amp;brand_name={quote(brand_name)}"
-    f"&amp;ai_agent_id={ai_agent_id}"  # Add ai_agent_id to the URL
-    f"&amp;lead_timezone={lead_timezone}"  # Add lead_timezone to the URL
+    f"&amp;ai_agent_id={ai_agent_id}"
+    f"&amp;lead_timezone={lead_timezone}"
     )              
     
     # XML response
@@ -448,8 +466,6 @@ async def test():
         # Plivo hangup logic
         print(f"Machine Detected - Hanging up call")
         if lead_id and lead_call_id and user_id:
-            # Get lead data from database using your style
-            #await dispostion_status_update(lead_id, 'Voicemail')
             conn = get_db_connection()
             if conn:
                 try:
@@ -499,7 +515,6 @@ async def test():
 
 
             if to_number == "12176186806":
-                # Determine which URL to use based on phone number
                 if lead_data and lead_data.get('phone') == "6025298353":
                     url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
                 else:
@@ -510,11 +525,6 @@ async def test():
                         url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
                     else:
                         url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
-                    #url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
-                # if lead_data and lead_data.get('phone') == "6025298353":
-                #     url = "https://snapit:mysnapit22@stagedialup.software/api/calltransfertest"
-                # else:
-                #     url = "https://zapprod:zap2024@linkup.software/api/calltransfertest"
             
             # Make the API call
             try:
@@ -557,7 +567,7 @@ async def handle_message():
     print('ai_agent_name', ai_agent_name)
     print('lead_phone', lead_phone)
     
-    # Initialize conversation state
+    # Initialize conversation state with lock for active_response
     conversation_state = {
         'in_ai_response': False,
         'current_ai_text': '',
@@ -570,10 +580,10 @@ async def handle_message():
         'active_response': False,  # Track if there's an active response to cancel
         'response_items': {},  # Store response items by ID
         'pending_language_reminder': False,  # Flag to send language reminder after current response
-        'ai_transcript': ''  # Accumulate AI transcript
+        'ai_transcript': '',
+        '_active_response_lock': asyncio.Lock()
     }
     
-
     prompt_text = ''  # Default to system message
     if ai_agent_id:
         conn = get_db_connection()
@@ -616,7 +626,7 @@ async def handle_message():
     
     # Combine with SYSTEM_MESSAGE
     prompt_to_use = prompt_text
-    print(f"prompt_text: {prompt_to_use}")
+    #print(f"prompt_text: {prompt_to_use}")
 
     url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
     headers = {
@@ -630,7 +640,6 @@ async def handle_message():
             
             # Send session update first
             await send_Session_update(openai_ws,prompt_to_use,voice_name)
-            #await asyncio.sleep(0.5)
             
             # Send the specific audio_message as initial prompt
             initial_prompt = {
@@ -640,15 +649,16 @@ async def handle_message():
                     "temperature": 0.8,
                     "instructions": (
                         f"Start with this exact phrase: '{audio_message}' "
-                        f"Wait for the user to confirm their identity. "
-                        f"IMPORTANT: Ignore any initial background audio, copyright notices, or system messages. "
-                        f"Only respond to clear human speech after your introduction. "
-                        f"Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase."
+                         "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase.\n\n"
+                         "TOOL USAGE: For EVERY response, you MUST use the custom_tool_response function with the exact JSON structure specified in your system prompt. "
+                         "This ensures proper tracking of conversation flow, facts collection, and disposition handling. "
+                         "Never respond without calling this function first."
                     )
                 }
             }
+            # Send create request but DO NOT set active_response = True here.
+            # Wait for 'response.created' event from server to set the flag.
             await openai_ws.send(json.dumps(initial_prompt))
-            conversation_state['active_response'] = True  # Mark that we have an active response
             
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
             
@@ -725,7 +735,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             # Use the text from the event if available, otherwise use accumulated text
             if text:
                 print(f"[LOG] AI Response: {text}")
-                # Log to database
                 await log_conversation(
                     conversation_state['lead_id'],
                     conversation_state['call_uuid'],
@@ -734,7 +743,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 )
             else:
                 print(f"[LOG] AI Response: {conversation_state['current_ai_text']}")
-                # Log to database
                 await log_conversation(
                     conversation_state['lead_id'],
                     conversation_state['call_uuid'],
@@ -757,7 +765,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             transcript = response.get('transcript', '')
             if transcript:
                 print(f"[LOG] AI Audio Transcript: {transcript}")
-                # Log to database
                 await log_conversation(
                     conversation_state['lead_id'],
                     conversation_state['call_uuid'],
@@ -766,7 +773,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 )
             else:
                 print(f"[LOG] AI Audio Transcript: {conversation_state['ai_transcript']}")
-                # Log to database
                 await log_conversation(
                     conversation_state['lead_id'],
                     conversation_state['call_uuid'],
@@ -779,18 +785,28 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         elif event_type == 'response.created':
             response_id = response.get('response', {}).get('id', '')
             print(f"[LOG] Response created with ID: {response_id}")
-            conversation_state['active_response'] = True
+            # mark active only when server confirms creation
+            lock = conversation_state.get('_active_response_lock')
+            if lock:
+                async with lock:
+                    conversation_state['active_response'] = True
+            else:
+                conversation_state['active_response'] = True
             
         # Handle response completion
         elif event_type == 'response.done':
             response_id = response.get('response', {}).get('id', '')
             print(f"[LOG] Response completed with ID: {response_id}")
-            conversation_state['active_response'] = False
+            lock = conversation_state.get('_active_response_lock')
+            if lock:
+                async with lock:
+                    conversation_state['active_response'] = False
+            else:
+                conversation_state['active_response'] = False
             
             # Log any remaining response items
             for item_id, text in conversation_state['response_items'].items():
                 print(f"[LOG] AI Response (item {item_id}): {text}")
-                # Log to database
                 await log_conversation(
                     conversation_state['lead_id'],
                     conversation_state['call_uuid'],
@@ -811,7 +827,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     }
                 }
                 await openai_ws.send(json.dumps(language_reminder))
-                conversation_state['active_response'] = True
+                # Do not force-set active_response; wait for response.created
                 conversation_state['pending_language_reminder'] = False
             
         # Handle user transcriptions
@@ -827,17 +843,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 transcript
             )
             
-            # Check if user is speaking in a language other than English
+            # Check if user is speaking in a language other than English (simple heuristic)
             if any(ord(char) > 127 for char in transcript):  # Check for non-ASCII characters
                 print("[LOG] Non-English detected")
                 
                 # If there's an active response, cancel it and set a flag to send reminder later
                 if conversation_state['active_response']:
                     print("[LOG] Cancelling active response to send language reminder")
-                    cancel_response = {
-                        "type": "response.cancel"
-                    }
-                    await openai_ws.send(json.dumps(cancel_response))
+                    # Use safe cancel helper
+                    await safe_cancel_response(openai_ws, conversation_state)
                     conversation_state['pending_language_reminder'] = True
                 else:
                     # Send the reminder immediately
@@ -851,8 +865,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                         }
                     }
                     await openai_ws.send(json.dumps(language_reminder))
-                    conversation_state['active_response'] = True
-            
+                    # Wait for response.created to set active_response
+                    
         # Handle speech started (user interruption)
         elif event_type == 'input_audio_buffer.speech_started':
             if conversation_state['in_ai_response']:
@@ -875,19 +889,21 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             }
             await plivo_ws.send(json.dumps(clear_audio_data))
             
-            # Only cancel if there's an active response
+            # Only cancel if there's an active response (use the safe helper)
             if conversation_state['active_response']:
-                cancel_response = {
-                    "type": "response.cancel"
-                }
-                await openai_ws.send(json.dumps(cancel_response))
-                conversation_state['active_response'] = False
+                await safe_cancel_response(openai_ws, conversation_state)
+                # Do not forcibly set active_response False; wait for response.cancelled/response.done
             else:
                 print("[LOG] No active response to cancel")
             
         # Handle response cancelled
         elif event_type == 'response.cancelled':
-            conversation_state['active_response'] = False
+            lock = conversation_state.get('_active_response_lock')
+            if lock:
+                async with lock:
+                    conversation_state['active_response'] = False
+            else:
+                conversation_state['active_response'] = False
             print("[LOG] Response cancelled")
             
             # If there's a pending language reminder, send it now
@@ -902,22 +918,26 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                     }
                 }
                 await openai_ws.send(json.dumps(language_reminder))
-                conversation_state['active_response'] = True
                 conversation_state['pending_language_reminder'] = False
             
         # Handle other events
         elif event_type == 'session.updated':
             print('Session updated successfully')
         elif event_type == 'error':
-            print(f'Error received from realtime API: {response}')
-            # Handle the specific cancellation error gracefully
-            if response.get('error', {}).get('code') == 'response_cancel_not_active':
+            # Slimmed-down error logging; treat cancel-race as benign
+            code = response.get('error', {}).get('code')
+            msg = response.get('error', {}).get('message')
+            print(f'Error received from realtime API: code={code} msg={msg}')
+            if code == 'response_cancel_not_active':
                 print("[LOG] Ignoring cancellation error - no active response")
-                conversation_state['active_response'] = False
-            # Handle the active response error
-            elif response.get('error', {}).get('code') == 'conversation_already_has_active_response':
+                lock = conversation_state.get('_active_response_lock')
+                if lock:
+                    async with lock:
+                        conversation_state['active_response'] = False
+                else:
+                    conversation_state['active_response'] = False
+            elif code == 'conversation_already_has_active_response':
                 print("[LOG] Cannot create new response - one already active")
-                # If we were trying to send a language reminder, set the pending flag
                 if conversation_state.get('pending_language_reminder', False):
                     print("[LOG] Language reminder already pending")
         elif event_type == 'response.audio.delta':
@@ -953,16 +973,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             t_lead_id = conversation_state['t_lead_id']
             if disposition_status and disposition_status.get('value'):
                 if disposition_status['value'] == 'Live Transfer':
-                    # Do something for Live Transfer
                     await transfer_call(lead_id, to_number,1)
                     print("Processing Live Transfer...")
                 elif disposition_status['value'] == 'Truck Retnal Transfer' or disposition_status['value'] == 'Truck Rental Transfer':
-                    #await dispostion_status_update(lead_id,'Truck Rental')
                     await transfer_call(lead_id, to_number,2)
-                    # Do something for Truck Retnal Transfer
                     print("Processing Truck Retnal Transfer...")
                 elif disposition_status['value'] == 'Support Transfer':
-                    # Do something for Support Transfer
                     print("Processing Support Transfer...")
                 else:
                     await dispostion_status_update(lead_id,disposition_status['value'])
@@ -991,7 +1007,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 }
                 print("Sending function call response")
                 await openai_ws.send(json.dumps(generate_response))
-                conversation_state['active_response'] = True
+                # wait for response.created to set active_response
             elif response['name'] == 'custom_tool_response':
                 # Handle custom tool response
                 args = json.loads(response['arguments'])
@@ -1020,10 +1036,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 }
                 print("Sending custom tool response")
                 await openai_ws.send(json.dumps(generate_response))
-                conversation_state['active_response'] = True    
+                # wait for response.created to set active_response
     except Exception as e:
         print(f"Error during OpenAI's websocket communication: {e}")
-    
+
 async def send_Session_update(openai_ws,prompt_to_use,voice_name):
 
     full_prompt = (
@@ -1061,7 +1077,7 @@ async def send_Session_update(openai_ws,prompt_to_use,voice_name):
                 {
                     "type": "function",
                     "name": "custom_tool_response",
-                    "description": "Custom structured response tool for call handling",
+                    "description": "REQUIRED: Must be called for every response to track conversation state, facts, and disposition",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1273,18 +1289,9 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
         print(f"[LEAD_UPDATE] Error updating lead {lead_id}: {str(e)}")
         import traceback
         print(f"[DEBUG] Full traceback: {traceback.format_exc()}")
-        # Ensure connections are closed even if error occurs
         if 'conn' in locals() and conn:
             conn.close()
         return False
-        
-    except Exception as e:
-        print(f"[LEAD_UPDATE] Error updating lead {lead_id}: {str(e)}")
-        # Ensure connections are closed even if error occurs
-        if 'conn' in locals() and conn:
-            conn.close()
-        return False
-
 
 async def update_lead_to_external_api(api_update_data, lead_phone, to_number, call_u_id, lead_id):
     """
