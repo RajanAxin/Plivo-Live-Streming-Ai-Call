@@ -98,7 +98,8 @@ def load_conversation_flow(path="csvFile.csv"):
                     "triggers": [t.strip().lower() for t in row["Triggers (examples, ;-separated)"].split(";")],
                     "required_facts": [r.strip() for r in row["RequiredFacts (needed before next)"].split(";") if r.strip()],
                     "instruction": row["Micro-Script (EN; 1–2 sentences)"].strip(),
-                    "next_action": row["NextAction"].strip()
+                    "next_action": row["NextAction"].strip(),
+                    "disposition": row["Disposition"].strip()
                 })
             print(f"Loaded {len(rules)} conversation rules from CSV")
             return rules
@@ -626,7 +627,7 @@ async def handle_message():
     
     # Combine with SYSTEM_MESSAGE
     prompt_to_use = prompt_text
-    #print(f"prompt_text: {prompt_to_use}")
+    print(f"prompt_text: {prompt_to_use}")
 
     url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
     headers = {
@@ -1216,23 +1217,23 @@ async def update_lead_from_collected_facts(lead_id,t_lead_id, lead_phone, to_num
         # Handle move_size conversion
         if collected_facts.get('lead_move_size'):
             move_size_lower = collected_facts['lead_move_size'].lower()
-            
+        
             if re.search(r'\bstudio(\s*(apartment|room))?\b', move_size_lower):
                 update_data['move_size'] = 1
                 api_update_data['move_size_id'] = 1
-            elif re.search(r'\b(1\s*bed(room)?|one\s*bed(room)?|1\s*br|1\s*bhk)\b', move_size_lower):
+            elif re.search(r'\b(1\s*bed(room)?s?|one\s*bed(room)?s?|1\s*br|1\s*bhk)\b', move_size_lower):
                 update_data['move_size'] = 2
                 api_update_data['move_size_id'] = 2
-            elif re.search(r'\b(2\s*bed(room)?|two\s*bed(room)?|2\s*br|2\s*bhk)\b', move_size_lower):
+            elif re.search(r'\b(2\s*bed(room)?s?|two\s*bed(room)?s?|2\s*br|2\s*bhk)\b', move_size_lower):
                 update_data['move_size'] = 3
                 api_update_data['move_size_id'] = 3
-            elif re.search(r'\b(3\s*bed(room)?|three\s*bed(room)?|3\s*br|3\s*bhk)\b', move_size_lower):
+            elif re.search(r'\b(3\s*bed(room)?s?|three\s*bed(room)?s?|3\s*br|3\s*bhk)\b', move_size_lower):
                 update_data['move_size'] = 4
                 api_update_data['move_size_id'] = 4
-            elif re.search(r'\b(4\s*bed(room)?|four\s*bed(room)?|4\s*br|4\s*bhk)\b', move_size_lower):
+            elif re.search(r'\b(4\s*bed(room)?s?|four\s*bed(room)?s?|4\s*br|4\s*bhk)\b', move_size_lower):
                 update_data['move_size'] = 5
                 api_update_data['move_size_id'] = 5
-            elif re.search(r'\b(5\s*\+|5\s*bed(room)?|five\s*bed(room)?|5\s*br|5\s*bhk)\b', move_size_lower):
+            elif re.search(r'\b(5\s*\+|5\s*bed(room)?s?|five\s*bed(room)?s?|5\s*br|5\s*bhk)\b', move_size_lower):
                 update_data['move_size'] = 6
                 api_update_data['move_size_id'] = 6
             else:
