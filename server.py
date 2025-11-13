@@ -97,7 +97,7 @@ def load_conversation_flow(path="csvFile.csv"):
                     "purpose": row["Purpose"].strip(),
                     "triggers": [t.strip().lower() for t in row["Triggers (examples, ;-separated)"].split(";")],
                     "required_facts": [r.strip() for r in row["RequiredFacts (needed before next)"].split(";") if r.strip()],
-                    "instruction": row["Micro-Script (EN; 1–2 sentences)"].strip(),
+                    "instruction": row["Micro-Script or Instruction (EN)"].strip(),
                     "next_action": row["NextAction"].strip(),
                     "disposition": row["Disposition"].strip()
                 })
