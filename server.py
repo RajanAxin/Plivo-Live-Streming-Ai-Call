@@ -66,7 +66,7 @@ def get_system_prompt():
             # Query system prompt data
             cursor.execute("""
                 SELECT content FROM system_prompt 
-                WHERE type = 'Inbound' AND status = 'Active' 
+                WHERE type IN ('Inbound', 'Outbound') AND status = 'Active' 
                 LIMIT 1
             """)
             prompt_data = cursor.fetchone()
