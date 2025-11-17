@@ -339,6 +339,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 await handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "update_lead":
                 await update_or_add_lead_details(openai_ws, args, item_id, call_id, conversation_state)
+            elif fn == "lookup_zip_options":
+                await lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state)
 
         # ------------------------
         # Session updated & errors
@@ -417,6 +419,21 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
             "instructions": "I've saved the disposition. Is there anything else you'd like to do?"
         }
     }))
+
+async def lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state):
+    city = args.get("city")
+    state = args.get("state")
+
+    # Ask OpenAI to directly generate ZIP suggestions
+    prompt = f"Suggest valid ZIP codes for {city}, {state}. Return only JSON: {{\"zip_codes\": [...]}}"
+    
+    await openai_ws.send(json.dumps({
+        "type": "response.create",
+        "response": {
+            "instructions": prompt
+        }
+    }))
+
 
 async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversation_state):
     try:
@@ -780,7 +797,7 @@ async def send_Session_update(openai_ws):
         "session": {
             "prompt": {
                 "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07",
-                "version": "12",
+                "version": "14",
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
