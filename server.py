@@ -178,6 +178,7 @@ async def handle_message():
     # Initialize conversation state with lock for active_response
     conversation_state = {
         'in_ai_response': False,
+        'user_partial':'',
         'current_ai_text': '',
         'lead_id': lead_id,
         't_lead_id': t_lead_id,
@@ -191,9 +192,11 @@ async def handle_message():
         'response_items': {},  # Store response items by ID
         'pending_language_reminder': False,  # Flag to send language reminder after current response
         'ai_transcript': '',
+        'session_ready': False,
+        '_audio_queue': [],  # if you queue audio until session is ready
     }
 
-    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+    url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Beta": "realtime=v1",
@@ -253,63 +256,129 @@ async def receive_from_plivo(plivo_ws, openai_ws):
 async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
     try:
         response = json.loads(message)
-        print("OpenAI Event:", response["type"])
+        evt_type = response.get("type", "")  # ALWAYS define evt_type early
+        #print("OpenAI Event:", evt_type)
 
-        # ----------------------------------------------------------
-        # SESSION UPDATED (Hosted Prompt + Tools Loaded)
-        # ----------------------------------------------------------
-        if response['type'] == 'session.updated':
-            print("\n=== SESSION UPDATED ===")
-            # print(json.dumps(response, indent=2))
-            # print(f"Hosted Prompt Loaded: {response['session']['prompt']['id']} (v{response['session']['prompt']['version']})")
+        # ------------------------
+        # USER (incoming audio -> transcription)
+        # ------------------------
+        # partials (various names seen across API versions)
+        if evt_type in (
+            "input_audio_transcription.delta",
+            "input_audio_transcription.partial",
+            "conversation.item_input_audio_transcription.delta",
+            "input_text.delta",
+        ):
+            text = response.get("delta") or response.get("text") or ""
+            conversation_state["user_partial"] = conversation_state.get("user_partial", "") + text
+            #print("[USER PARTIAL]:", text)
 
-            # print("\n=== LOADED TOOLS ===")
-            # print(json.dumps(response['session'].get("tools", []), indent=2))
+        # final user transcription
+        elif evt_type in (
+            "input_audio_transcription.done",
+            "conversation.item_input_audio_transcription.done",
+            "input_text.completed",
+            "input_text.final",
+        ):
+            final_text = response.get("text") or conversation_state.get("user_partial", "")
+            final_text = final_text or ""
+            print("\n[USER SAID]:", final_text)
+            conversation_state["ai_transcript"] = conversation_state.get("ai_transcript", "") + f"USER: {final_text}\n"
+            conversation_state["user_partial"] = ""  # reset
 
-        # ----------------------------------------------------------
-        # PLAYING AUDIO BACK TO PLIVO
-        # ----------------------------------------------------------
-        elif response['type'] == 'response.audio.delta':
-            audio_delta = {
-                "event": "playAudio",
-                "media": {
-                    "contentType": "audio/x-mulaw",
-                    "sampleRate": 8000,
-                    "payload": base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
+        # ------------------------
+        # AI audio transcript (what the AI spoke) — partials
+        # ------------------------
+        elif evt_type == "response.audio_transcript.delta":
+            text = response.get("delta") or ""
+            conversation_state["current_ai_text"] = conversation_state.get("current_ai_text", "") + text
+            #print("[AI PARTIAL]:", text)
+
+        # AI audio transcript final
+        elif evt_type == "response.audio_transcript.done":
+            full = conversation_state.get("current_ai_text", "") or response.get("text", "") or ""
+            print("\n[AI SAID]:", full)
+            conversation_state["ai_transcript"] = conversation_state.get("ai_transcript", "") + f"AI: {full}\n"
+            conversation_state["current_ai_text"] = ""  # reset
+
+        # ------------------------
+        # AI audio frames (play audio to Plivo)
+        # ------------------------
+        elif evt_type == "response.audio.delta":
+            # some responses use 'delta' (base64); make sure to handle accordingly
+            delta_b64 = response.get("delta") or response.get("audio") or ""
+            if delta_b64:
+                audio_delta = {
+                    "event": "playAudio",
+                    "media": {
+                        "contentType": "audio/x-mulaw",
+                        "sampleRate": 8000,
+                        "payload": base64.b64encode(base64.b64decode(delta_b64)).decode("utf-8")
+                    }
                 }
-            }
-            await plivo_ws.send(json.dumps(audio_delta))
+                await plivo_ws.send(json.dumps(audio_delta))
 
-        # ----------------------------------------------------------
-        # FUNCTION CALL FROM HOSTED PROMPT
-        # ----------------------------------------------------------
-        elif response['type'] == 'response.function_call_arguments.done':
-            fn = response['name']
-            args = json.loads(response['arguments'])
-            print("\n=== FUNCTION CALL RECEIVED ===")
-            print("Function:", fn)
-            print("Arguments:", args)
-            item_id = response['item_id']
-            call_id = response['call_id']
-            # ------- Handle Hosted Prompt Function -------
+        elif evt_type == "response.audio.done":
+            # optional: notify plivo that audio finished (if needed)
+            print("[AI AUDIO DONE]")
+
+        # ------------------------
+        # Function call completed by model (your hosted prompt functions)
+        # ------------------------
+        elif evt_type == "response.function_call_arguments.done":
+            fn = response.get("name")
+            args_raw = response.get("arguments", "{}")
+            try:
+                args = json.loads(args_raw)
+            except Exception:
+                args = {}
+            item_id = response.get("item_id")
+            call_id = response.get("call_id")
+            print("\n=== FUNCTION CALL RECEIVED ===", fn, args)
             if fn == "assign_customer_disposition":
-                await handle_assign_disposition(openai_ws, args, item_id, call_id,conversation_state)
+                await handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "update_lead":
-                await update_or_add_lead_details(args,conversation_state)
+                await update_or_add_lead_details(openai_ws, args, item_id, call_id, conversation_state)
 
-        # ----------------------------------------------------------
-        # USER STARTS TALKING (CANCEL CURRENT RESPONSE)
-        # ----------------------------------------------------------
-        elif response['type'] == 'input_audio_buffer.speech_started':
+        # ------------------------
+        # Session updated & errors
+        # ------------------------
+        elif evt_type == "session.updated":
+            # print full session info when debugging; comment out in prod if noisy
+            #print("[SESSION UPDATED]:", json.dumps(response.get("session", {})))
+            print("\n=== SESSION UPDATED ===")
+            # You should verify here that input_audio_transcription (or equivalent) is present:
+            # print("Session keys:", list(response.get("session", {}).keys()))
+
+        elif evt_type == "error":
+            print("[OPENAI ERROR EVENT]:", json.dumps(response, indent=2))
+
+        # ------------------------
+        # When user starts speaking, cancel current AI response (you already used this)
+        # ------------------------
+        elif evt_type == "input_audio_buffer.speech_started":
             print("Speech started → cancel response")
-            await plivo_ws.send(json.dumps({
-                "event": "clearAudio",
-                "stream_id": plivo_ws.stream_id
-            }))
+            try:
+                await plivo_ws.send(json.dumps({
+                    "event": "clearAudio",
+                    "stream_id": plivo_ws.stream_id
+                }))
+            except Exception:
+                pass
             await openai_ws.send(json.dumps({"type": "response.cancel"}))
 
+        # ------------------------
+        # Other events: log for debugging
+        # ------------------------
+        else:
+            # This will show you the full JSON for unknown event types so you can adapt the handler
+            #print("Unhandled OpenAI event (full):", json.dumps(response))
+            print("Unhandled OpenAI event (full):")
+
     except Exception as e:
-        print(f"Error processing OpenAI message: {e}")
+        print("Error processing OpenAI message:", e)
+        import traceback
+        print(traceback.format_exc())
 
 # ===============================================================
 # HANDLE FUNCTION: assign_customer_disposition
@@ -349,7 +418,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
         }
     }))
 
-async def update_or_add_lead_details(args,conversation_state):
+async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversation_state):
     try:
         print("\n=== Updating Lead Details ===")
         print(args)
@@ -470,6 +539,28 @@ async def update_or_add_lead_details(args,conversation_state):
         
         if rows_affected > 0:
             print(f"[LEAD_UPDATE] Successfully updated lead {lead_id} with fields: {list(update_data.keys())}")
+
+            await openai_ws.send(json.dumps({
+                "type": "conversation.item.create",
+                "item": {
+                    "id": item_id,
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": json.dumps(args)
+                }
+            }))
+
+            await openai_ws.send(json.dumps({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["audio", "text"],
+                    "instructions": (
+                        "Continue the conversation with the caller incorporating the updated lead details: "
+                        + json.dumps(args)
+                    )
+                }
+            }))
+            print("[LEAD_UPDATE] Sent function output and requested model response.")
             return True
         else:
             print(f"[LEAD_UPDATE] No rows updated - lead_id {lead_id} may not exist")
@@ -689,10 +780,13 @@ async def send_Session_update(openai_ws):
         "session": {
             "prompt": {
                 "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07",
-                "version": "7",
+                "version": "12",
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
+            "input_audio_transcription": {
+                "model": "whisper-1"
+            },
             "modalities": ["text", "audio"],
         }
     }
