@@ -22,6 +22,39 @@ PORT = 5000
 
 app = Quart(__name__)
 
+def ensure_dict(val):
+    # If it's already a dict → return as is
+    if isinstance(val, dict):
+        return val
+
+    # If it's a string → try to extract JSON
+    if isinstance(val, str):
+        # Try direct JSON parse
+        try:
+            return json.loads(val)
+        except:
+            pass
+
+        # Try extracting {...} JSON substring from logs
+        json_match = re.search(r'\{.*\}', val, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except:
+                pass
+
+        # Fallback if nothing works
+        return {
+            "status": "FAILURE",
+            "error": val
+        }
+
+    # Any unknown type → fallback
+    return {
+        "status": "FAILURE",
+        "error": str(val)
+    }
+
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
@@ -207,6 +240,22 @@ async def handle_message():
             print('connected to the OpenAI Realtime API')
 
             await send_Session_update(openai_ws)
+            
+             # Send the specific audio_message as initial prompt
+            initial_prompt = {
+                "type": "response.create",
+                "response": {
+                    "modalities": ["audio", "text"],
+                    "temperature": 0.8,
+                    "instructions": (
+                        f"Start with this exact phrase: '{audio_message}' "
+                         "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase.\n\n"
+                    )
+                }
+            }
+            # Send create request but DO NOT set active_response = True here.
+            # Wait for 'response.created' event from server to set the flag.
+            await openai_ws.send(json.dumps(initial_prompt))
 
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
 
@@ -388,10 +437,33 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
 async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversation_state):
     print("\n=== Saving Disposition ===")
     print(args)
+    ai_greeting_instruction = ''
+    transfer_result = None
     if(args.get("disposition") != None):
-        await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"))
+        if(args.get("disposition") == 'Live Transfer'):
+            transfer_result = await transfer_call(conversation_state['lead_id'],1,conversation_state['site'],conversation_state['server'])
+        elif(args.get("disposition") == 'Truck Rental'):
+            transfer_result = await transfer_call(conversation_state['lead_id'],2,conversation_state['site'],conversation_state['server'])
+        else:
+            await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"))
+            ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
+    
     # Simulate DB save here
     # You can replace with real MySQL insert
+    # 🔍 If transfer_result exists → check for API FAILURE
+    if transfer_result:
+        parsed = ensure_dict(transfer_result)
+        print('tresult',parsed)
+        try:
+            status = parsed.get("status")
+            api_error_message = parsed.get("error") or "Transfer failed."
+            print('status',status)
+            if status == "FAILURE":
+                ai_greeting_instruction = api_error_message
+        except Exception as e:
+            print("Transfer result parsing error:", e)
+
+    # If no FAILURE, continue with normal flow
     saved_output = {
         "status": "saved",
         "disposition": args.get("disposition"),
@@ -400,7 +472,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
         "notes": args.get("notes"),
     }
 
-    # 1️⃣ Send function_call_output back to OpenAI
+    # 1️⃣ Send function output back to OpenAI
     await openai_ws.send(json.dumps({
         "type": "conversation.item.create",
         "item": {
@@ -411,14 +483,15 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
         }
     }))
 
-    # 2️⃣ Tell the model to speak a confirmation message
+    # 2️⃣ Tell the model to speak confirmation
     await openai_ws.send(json.dumps({
         "type": "response.create",
         "response": {
             "modalities": ["audio", "text"],
-            "instructions": "I've saved the disposition. Is there anything else you'd like to do?"
+            "instructions": ai_greeting_instruction
         }
     }))
+
 
 async def lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state):
     city = args.get("city")
@@ -474,6 +547,9 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
         if args.get('to_zip'):
             update_data['to_zip'] = args['to_zip']
             api_update_data['to_zipcode'] = args['to_zip']
+        if args.get('move_size'):
+            update_data['move_size'] = args['move_size']
+            api_update_data['move_size_id'] = args['move_size']
         if args.get('move_date'):
             original_date = args['move_date']
             try:
@@ -489,32 +565,6 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
                 update_data['move_date'] = original_date
                 api_update_data['move_date'] = original_date
         
-        # Handle move_size conversion
-        if args.get('move_size'):
-            move_size_lower = args['move_size'].lower()
-        
-            if re.search(r'\bstudio(\s*(apartment|room))?\b', move_size_lower):
-                update_data['move_size'] = 1
-                api_update_data['move_size_id'] = 1
-            elif re.search(r'\b(1\s*bed(room)?s?|one\s*bed(room)?s?|1\s*br|1\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 2
-                api_update_data['move_size_id'] = 2
-            elif re.search(r'\b(2\s*bed(room)?s?|two\s*bed(room)?s?|2\s*br|2\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 3
-                api_update_data['move_size_id'] = 3
-            elif re.search(r'\b(3\s*bed(room)?s?|three\s*bed(room)?s?|3\s*br|3\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 4
-                api_update_data['move_size_id'] = 4
-            elif re.search(r'\b(4\s*bed(room)?s?|four\s*bed(room)?s?|4\s*br|4\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 5
-                api_update_data['move_size_id'] = 5
-            elif re.search(r'\b(5\s*\+|5\s*bed(room)?s?|five\s*bed(room)?s?|5\s*br|5\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 6
-                api_update_data['move_size_id'] = 6
-            else:
-                update_data['move_size'] = args['move_size']
-                api_update_data['move_size_id'] = args['move_size']
-
         print('api_update_data',api_update_data)
         api_success = await update_lead_to_external_api(api_update_data,conversation_state['call_uuid'], conversation_state['lead_id'],conversation_state['site'],conversation_state['server'])
         print(f"[TRANSFER] API call result: {api_success}")
@@ -737,6 +787,87 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id,site,s
         return False
 
 
+async def transfer_call(lead_id,transfer_type,site,server):
+        try:
+            print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+            
+            # Fetch lead data from database
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor(dictionary=True, buffered=True)
+                cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
+                lead_data = cursor.fetchone()
+                if transfer_type == 2:
+                    cursor.execute("SELECT * FROM lead_call_contact_details WHERE lead_id = %s AND call_type = 'truck_rental_transfer'", (lead_id,))
+                    lead_truck_rental_data = cursor.fetchone()
+                else:
+                    lead_truck_rental_data = None
+                cursor.close()
+                conn.close()
+            else:
+                raise Exception("Failed to get database connection")
+            
+            if not lead_data:
+                raise Exception(f"Lead not found for lead_id: {lead_id}")
+            
+            print(f"[TRANSFER] Lead Data: {lead_data['phone']}")
+            
+            # Prepare the payload
+            payload = {
+            'id': lead_data.get('t_call_id'),
+            'action': 1,
+            'usaBusinessCheck': 1 if transfer_type == 2 else 0,
+            'type': 1,
+            'review_call': lead_data.get('review_call',0),  # defaults to 0 if None or missing
+            'accept_call': 0,
+            'rep_id': lead_data.get('t_rep_id'),
+            'logic_check': 1,
+            'lead_id': lead_data.get('t_lead_id'),
+            'categoryId': 1,
+            'buffer_id_arr': '',
+            'campaignId': lead_data.get('campaign_id'),
+            'campaignScore': lead_data.get('campaign_score'),
+            'campaignNumber': lead_truck_rental_data.get('phone') if transfer_type == 2 else lead_data.get('mover_phone'),
+            'campaignPayout': lead_data.get('campaign_payout')
+            }
+            
+            print(f"[TRANSFER] Payload: {payload}")
+            # Determine URL based on phone number
+
+            if site == "ZAP":
+                if server == "Prod":
+                    url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+                else:
+                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+            else:
+                if server == "Prod":
+                    url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+                else:
+                    url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+            
+            print(f"[TRANSFER] Using URL: {url}")
+            
+            # Make the API call
+            async with aiohttp.ClientSession() as session:
+                # ✅ Add 3-second delay before making API call
+                await asyncio.sleep(2)
+                async with session.post(
+                    url,
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(payload)
+                ) as resp:
+                    if resp.status == 200:
+                        response_text = await resp.text()
+                        print(f"[TRANSFER] API call successful: {response_text}")
+                        return response_text
+                    else:
+                        response_text = await resp.text()
+                        raise Exception(f"API call failed with status {resp.status}: {response_text}")
+        
+        except Exception as e:
+            print(f"[TRANSFER] Error: {e}")
+
+
 
 async def dispostion_status_update(lead_id, disposition_val):
     try:
@@ -797,7 +928,7 @@ async def send_Session_update(openai_ws):
         "session": {
             "prompt": {
                 "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07",
-                "version": "14",
+                "version": "18",
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
