@@ -642,7 +642,7 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
         return False
 
 
-async def update_lead_to_external_api(api_update_data, call_u_id, lead_id,site,server):
+async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site, server):
     """
     Sends api_update_data to external updateailead endpoint and if the response
     contains live_transfer / truck_rental, delete existing rows for the lead & call_types
@@ -687,7 +687,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id,site,s
                     payload = json.loads(response_text)
                 except Exception as e:
                     print(f"[TRANSFER] Failed to parse JSON response: {e}")
-                    return True  # external API OK; nothing to save
+                    return True  # external API OK; nothing to save locally
 
                 data = payload.get("data") or {}
                 # Use provided lead_id (caller passes this)
@@ -700,11 +700,17 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id,site,s
                     digits = re.sub(r"\D+", "", str(p))
                     return digits if digits else p
 
-                # collect contact entries (keys from your API are "live_transfer" and "truck_rental")
+                # collect contact entries (keys from your API are "live_transfer" and "truck_rental_transfer")
                 contacts_to_insert = []
                 call_types_seen = set()
 
-                for key, call_type in (("live_trasnfer"), ("truck_rental_transfer")):
+                # NOTE: iterate explicit (api_node_key, call_type_value) pairs
+                pairs = (
+                    ("live_transfer", "live_transfer"),
+                    ("truck_rental_transfer", "truck_rental_transfer"),
+                )
+
+                for key, call_type in pairs:
                     node = data.get(key)
                     if node and isinstance(node, dict):
                         name = node.get("mover_name") or node.get("name") or None
