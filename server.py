@@ -935,7 +935,7 @@ async def send_Session_update(openai_ws):
         "session": {
             "prompt": {
                 "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07",
-                "version": "18",
+                "version": "19",
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
