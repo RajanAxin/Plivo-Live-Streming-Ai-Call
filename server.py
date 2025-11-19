@@ -440,13 +440,14 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
     print(args)
     ai_greeting_instruction = ''
     transfer_result = None
+    follow_up_time = args.get("followup_time")
     if(args.get("disposition") != None):
         if(args.get("disposition") == 'Live Transfer'):
             transfer_result = await transfer_call(conversation_state['lead_id'],1,conversation_state['site'],conversation_state['server'])
         elif(args.get("disposition") == 'Truck Rental'):
             transfer_result = await transfer_call(conversation_state['lead_id'],2,conversation_state['site'],conversation_state['server'])
         else:
-            await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"))
+            await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"),follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
     
     # Simulate DB save here
@@ -876,14 +877,14 @@ async def transfer_call(lead_id,transfer_type,site,server):
 
 
 
-async def dispostion_status_update(lead_id, disposition_val):
+async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
     try:
 
         if disposition_val == 'DNC':
             disposition = 2
         elif disposition_val == 'Not Interested':
             disposition = 3
-        elif disposition_val == 'Follow Up':
+        elif disposition_val == 'Followup':
             disposition = 4
         elif disposition_val == 'No Buyer':
             disposition = 5
@@ -911,11 +912,15 @@ async def dispostion_status_update(lead_id, disposition_val):
             disposition = 16 
         else:
             disposition = 17
+
         params = {
-            "lead_id": lead_id,
-            "disposition": disposition
-        }
-        print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
+                "lead_id": lead_id,
+                "disposition": disposition
+            }
+
+        if disposition == 4:
+            params["followupdatetime"] = follow_up_time
+            print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         # Build the URL with proper encoding
         query_string = urlencode(params, quote_via=quote)
         redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
