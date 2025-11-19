@@ -3,9 +3,9 @@ from quart import Quart, websocket, Response, request
 import asyncio
 import websockets
 import json
-import requests
 import re
 import base64
+import requests
 import aiohttp
 from database import get_db_connection
 from urllib.parse import quote, urlencode
@@ -55,6 +55,7 @@ def ensure_dict(val):
         "status": "FAILURE",
         "error": str(val)
     }
+
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
@@ -149,10 +150,12 @@ async def home():
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
+    lead_type = lead_data['type'] if lead_data else 'outbound'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
+    print(f"lead_type: {lead_type if lead_type else 'N/A'}")
     
     ws_url = (
     f"wss://{request.host}/media-stream?"
@@ -170,6 +173,7 @@ async def home():
     f"&amp;lead_timezone={lead_timezone}"
     f"&amp;site={site}"
     f"&amp;server={server}"
+    f"&amp;lead_type={lead_type}"
     )              
     
     # XML response
@@ -182,6 +186,105 @@ async def home():
     </Response>'''
     
     return Response(xml_data, mimetype='application/xml')
+
+
+@app.route("/test", methods=["POST"])
+async def test():
+    # Get form data (POST params)
+    data = await request.form
+    machine = data.get("Machine")
+    
+    # Get query string params (GET params)
+    lead_id = request.args.get("lead_id")
+    lead_phone = request.args.get("lead_phone_number")
+    user_id = request.args.get("user_id")
+    lead_call_id = request.args.get("lead_call_id")
+    call_uuid = request.args.get("call_uuid")
+    to_number = (await request.form).get('To') or request.args.get('To')
+    print(f"[AMD] Machine={machine}, LeadID={lead_id}, Phone={lead_phone}, UserID={user_id}, CallUUID={call_uuid}")
+
+    if machine and machine.lower() == 'true':
+        # Plivo hangup logic
+        print(f"Machine Detected - Hanging up call")
+        if lead_id and lead_call_id and user_id:
+            conn = get_db_connection()
+            if conn:
+                try:
+                    cursor = conn.cursor(dictionary=True, buffered=True)
+                    cursor.execute("""
+                        SELECT * FROM `leads` 
+                        WHERE t_lead_id = %s 
+                        ORDER BY lead_id DESC 
+                        LIMIT 1
+                    """, (lead_id,))
+                    lead_data = cursor.fetchone()
+                    print(f"Lead data: {lead_data}")
+                    
+                except Exception as e:
+                    print(f"Database error: {e}")
+                    lead_data = None
+                finally:
+                    cursor.close()
+                    conn.close()
+            else:
+                print("Failed to get database connection")
+                lead_data = None
+
+            # Prepare the API payload
+            para = json.dumps({
+                'id': lead_call_id,
+                'action': 6,
+                'type': 1,
+                'call': '1',
+                'follow_up_date_time': '',
+                'follow_up_time': '',
+                'campaign_id': 0,
+                'campaign_score': 0,
+                'transfer_number': 0,
+                'payout': 0,
+                'lead_id': lead_id,
+                'logic_check': 0,
+                'review_call': 0,
+                'booking_call': 0,
+                'booking_recall': 0,
+                'accept_call': 0,
+                'rep_id': user_id,
+                'lead_category': 1,
+                'buffer_id_arr': '',
+                'timezone_id': lead_data.get('t_timezone', 0) if lead_data else 0
+            })
+
+
+            if to_number == "12176186806":
+                if lead_data and lead_data.get('phone') == "6025298353":
+                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+                else:
+                    url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+            else:
+                    print("to_number is not 12176186806")
+                    if lead_data and lead_data.get('phone') in ("6025298353", "6263216095"):
+                        url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                    else:
+                        url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+            
+            # Make the API call
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        url,
+                        headers={'Content-Type': 'application/json'},
+                        data=para,
+                        timeout=aiohttp.ClientTimeout(total=30)
+                    ) as response:
+                        response_text = await response.text()
+                        print(f"callit log curl_api_call URL: {url} === res: {response_text}")
+                        
+            except Exception as e:
+                print(f"Error making API call: {e}")
+        else:
+            print("Missing required parameters for call transfer")
+
+    return "OK"
 
 # ===============================================================
 # MAIN MEDIA STREAM HANDLER
@@ -202,13 +305,15 @@ async def handle_message():
     lead_phone = websocket.args.get('lead_phone', 'unknown')
     site = websocket.args.get('site', 'unknown')
     server = websocket.args.get('server', 'unknown')
+    lead_type = websocket.args.get('lead_type', 'unknown')
+    print('lead_id', lead_id)
     print('audio_message', audio_message)
     print('voice_name', voice_name)
     print('ai_agent_id', ai_agent_id)
     print('lead_timezone', lead_timezone)
     print('ai_agent_name', ai_agent_name)
     print('lead_phone', lead_phone)
-
+    print('lead_type', lead_type)
     # Initialize conversation state with lock for active_response
     conversation_state = {
         'in_ai_response': False,
@@ -230,6 +335,52 @@ async def handle_message():
         '_audio_queue': [],  # if you queue audio until session is ready
     }
 
+
+    prompt_text = ''  # Default to system message
+    if ai_agent_id:
+        conn = get_db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor(dictionary=True, buffered=True)
+                # Fetch the active prompt for this ai_agent
+                cursor.execute("SELECT * FROM ai_agent_prompts WHERE ai_agent_id = %s and is_active = 1", (ai_agent_id,))
+                ai_agent_prompt = cursor.fetchone()
+                if ai_agent_prompt:
+                    prompt_text = ai_agent_prompt.get('prompt_text') or ai_agent_prompt.get('prompt') or ''
+                    print("Loaded prompt_text (before replacements):", repr(prompt_text))
+                    # If we have lead_id, fetch lead data and replace placeholders
+                    if lead_id and lead_id != 'unknown':
+                        try:
+                            lead_id_int = int(lead_id)
+                            cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id_int,))
+                            lead_data = cursor.fetchone()
+                            if lead_data:
+                                prompt_text = prompt_text.replace("[brand_name]", brand_name)
+                                for key, value in lead_data.items():
+                                    placeholder = f"[lead_{key}]"
+                                    # Special handling for move_size placeholder
+                                    if key == "move_size" and value:
+                                        cursor.execute("SELECT move_size FROM mst_move_size WHERE move_size_id = %s", (value,))
+                                        size_row = cursor.fetchone()
+                                        if size_row:
+                                            prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
+                                        else:
+                                            prompt_text = prompt_text.replace(placeholder, str(value))  # fallback
+                                    else:
+                                        prompt_text = prompt_text.replace(placeholder, str(value))
+                        except (ValueError, TypeError):
+                            print(f"Invalid lead_id: {lead_id}")
+            except Exception as e:
+                print(f"Error fetching prompt in handle_message: {e}")
+            finally:
+                if conn.is_connected():
+                    cursor.close()
+                    conn.close()
+    # Combine with SYSTEM_MESSAGE
+    prompt_to_use = prompt_text
+    print(f"prompt_text (after replacements): {repr(prompt_to_use)}")
+
+
     url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -240,8 +391,8 @@ async def handle_message():
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('connected to the OpenAI Realtime API')
 
-            await send_Session_update(openai_ws)
-            
+            await send_Session_update(openai_ws,prompt_to_use,lead_type)
+
              # Send the specific audio_message as initial prompt
             initial_prompt = {
                 "type": "response.create",
@@ -432,9 +583,11 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         import traceback
         print(traceback.format_exc())
 
+
 # ===============================================================
 # HANDLE FUNCTION: assign_customer_disposition
 # ===============================================================
+
 async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversation_state):
     print("\n=== Saving Disposition ===")
     print(args)
@@ -931,17 +1084,28 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
     except Exception as e:
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
+
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws):
+async def send_Session_update(openai_ws,prompt_to_use,lead_type):
+
+    if lead_type == "outbound":
+        prompt_obj = {
+            "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded",
+            "version": "10"
+        }
+    else:
+        prompt_obj = {
+            "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07",
+            "version": "22"
+        }
+    
     session_update = {
         "type": "session.update",
         "session": {
-            "prompt": {
-                "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07",
-                "version": "22",
-            },
+            "prompt": prompt_obj,
+            "instructions": prompt_to_use,
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
             "input_audio_transcription": {
