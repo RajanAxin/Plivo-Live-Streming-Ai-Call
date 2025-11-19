@@ -146,6 +146,8 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
+    lead_name = lead_data['name'] if lead_data else ''
+    lead_email = lead_data['email'] if lead_data else ''
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
@@ -165,6 +167,8 @@ async def home():
     f"&amp;To={to_number}"
     f"&amp;lead_phone={lead_phone}"
     f"&amp;lead_id={lead_id}"
+    f"&amp;lead_name={lead_name}"
+    f"&amp;lead_email={lead_email}"
     f"&amp;t_lead_id={t_lead_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
@@ -299,6 +303,10 @@ async def handle_message():
     call_uuid = websocket.args.get('CallUUID', 'unknown')
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
+    raw_name = websocket.args.get('lead_name')
+    raw_email = websocket.args.get('lead_email')
+    lead_name = None if raw_name in (None, "", "None", "null") else raw_name
+    lead_email = None if raw_email in (None, "", "None", "null") else raw_email
     lead_id = websocket.args.get('lead_id', 'unknown')
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
@@ -312,6 +320,8 @@ async def handle_message():
     print('ai_agent_id', ai_agent_id)
     print('lead_timezone', lead_timezone)
     print('ai_agent_name', ai_agent_name)
+    print('lead_name', lead_name)
+    print('lead_email', lead_email)
     print('lead_phone', lead_phone)
     print('lead_type', lead_type)
     # Initialize conversation state with lock for active_response
@@ -337,7 +347,7 @@ async def handle_message():
 
 
     prompt_text = ''  # Default to system message
-    if ai_agent_id and lead_type=="outbound":
+    if ai_agent_id and lead_name is not None and lead_email is not None:
         conn = get_db_connection()
         if conn:
             try:
@@ -391,7 +401,7 @@ async def handle_message():
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('connected to the OpenAI Realtime API')
 
-            await send_Session_update(openai_ws,prompt_to_use,lead_type)
+            await send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email)
 
              # Send the specific audio_message as initial prompt
             initial_prompt = {
@@ -1088,9 +1098,9 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws,prompt_to_use,lead_type):
+async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email):
 
-    if lead_type == "outbound":
+    if lead_name is not None and lead_email is not None:
         print("outbound")
         prompt_obj = {
             "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
