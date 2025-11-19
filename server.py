@@ -884,7 +884,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
             disposition = 2
         elif disposition_val == 'Not Interested':
             disposition = 3
-        elif disposition_val == 'Followup':
+        elif disposition_val == 'Follow Up':
             disposition = 4
         elif disposition_val == 'No Buyer':
             disposition = 5
