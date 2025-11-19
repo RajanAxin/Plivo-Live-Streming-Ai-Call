@@ -1091,11 +1091,13 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 async def send_Session_update(openai_ws,prompt_to_use,lead_type):
 
     if lead_type == "outbound":
+        print("outbound")
         prompt_obj = {
             "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded",
             "version": "10"
         }
     else:
+        print("inbound")
         prompt_obj = {
             "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07",
             "version": "22"
