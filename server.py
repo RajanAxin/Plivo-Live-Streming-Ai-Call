@@ -337,7 +337,7 @@ async def handle_message():
 
 
     prompt_text = ''  # Default to system message
-    if ai_agent_id:
+    if ai_agent_id and lead_type=="outbound":
         conn = get_db_connection()
         if conn:
             try:
