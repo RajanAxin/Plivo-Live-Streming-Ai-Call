@@ -146,8 +146,8 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
-    lead_name = quote(lead_data['name']) if lead_data else 'None'
-    lead_email = quote(lead_data['email']) if lead_data else 'None'
+    lead_name = quote(lead_data['name']) if (lead_data and lead_data.get('name')) else None
+    lead_email = quote(lead_data['email']) if (lead_data and lead_data.get('email')) else None
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
