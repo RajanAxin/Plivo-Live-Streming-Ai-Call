@@ -305,10 +305,8 @@ async def handle_message():
     call_uuid = websocket.args.get('CallUUID', 'unknown')
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
-    raw_name = websocket.args.get('lead_name')
-    raw_email = websocket.args.get('lead_email')
-    lead_name = websocket.args.get('lead_name', 'None') if raw_name in (None, "", "None", "null") else raw_name
-    lead_email = websocket.args.get('lead_email', 'None') if raw_email in (None, "", "None", "null") else raw_email
+    lead_name = websocket.args.get('lead_name')
+    lead_email = websocket.args.get('lead_email')
     lead_id = websocket.args.get('lead_id', 'unknown')
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
