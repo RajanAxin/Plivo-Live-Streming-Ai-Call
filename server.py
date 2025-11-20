@@ -146,8 +146,8 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
-    lead_name = lead_data['name'] if lead_data else 'None'
-    lead_email = lead_data['email'] if lead_data else 'None'
+    lead_name = lead_data['name'] if lead_data else 'No Record'
+    lead_email = lead_data['email'] if lead_data else 'No Record'
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
@@ -347,7 +347,7 @@ async def handle_message():
 
 
     prompt_text = ''  # Default to system message
-    if ai_agent_id and lead_name and lead_name != "None" and lead_email and lead_email != "None":
+    if ai_agent_id and lead_name and lead_name != "No Record" and lead_email and lead_email != "No Record":
         conn = get_db_connection()
         if conn:
             try:
@@ -1101,7 +1101,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 # ===============================================================
 async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email):
 
-    if lead_name and lead_name != "None" and lead_email and lead_email != "None":
+    if lead_name and lead_name != "No Record" and lead_email and lead_email != "No Record":
         print("outbound")
         prompt_obj = {
             "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
