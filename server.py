@@ -146,18 +146,14 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
-    lead_name = lead_data['name'] if lead_data else ''
-    lead_email = lead_data['email'] if lead_data else ''
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
-    lead_type = lead_data['type'] if lead_data else 'outbound'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
-    print(f"lead_type: {lead_type if lead_type else 'N/A'}")
     
     ws_url = (
     f"wss://{request.host}/media-stream?"
@@ -167,8 +163,6 @@ async def home():
     f"&amp;To={to_number}"
     f"&amp;lead_phone={lead_phone}"
     f"&amp;lead_id={lead_id}"
-    f"&amp;lead_name={lead_name}"
-    f"&amp;lead_email={lead_email}"
     f"&amp;t_lead_id={t_lead_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
@@ -177,7 +171,6 @@ async def home():
     f"&amp;lead_timezone={lead_timezone}"
     f"&amp;site={site}"
     f"&amp;server={server}"
-    #f"&amp;lead_type={lead_type}"
     )              
     
     # XML response
@@ -303,27 +296,20 @@ async def handle_message():
     call_uuid = websocket.args.get('CallUUID', 'unknown')
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
-    raw_name = websocket.args.get('lead_name')
-    raw_email = websocket.args.get('lead_email')
-    lead_name = None if raw_name in (None, "", "None", "null") else raw_name
-    lead_email = None if raw_email in (None, "", "None", "null") else raw_email
     lead_id = websocket.args.get('lead_id', 'unknown')
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
     lead_phone = websocket.args.get('lead_phone', 'unknown')
     site = websocket.args.get('site', 'unknown')
     server = websocket.args.get('server', 'unknown')
-    lead_type = websocket.args.get('lead_type', 'outbound')
     print('lead_id', lead_id)
     print('audio_message', audio_message)
     print('voice_name', voice_name)
     print('ai_agent_id', ai_agent_id)
     print('lead_timezone', lead_timezone)
     print('ai_agent_name', ai_agent_name)
-    print('lead_name', lead_name)
-    print('lead_email', lead_email)
     print('lead_phone', lead_phone)
-    print('lead_type', lead_type)
+
     # Initialize conversation state with lock for active_response
     conversation_state = {
         'in_ai_response': False,
@@ -347,7 +333,7 @@ async def handle_message():
 
 
     prompt_text = ''  # Default to system message
-    if ai_agent_id and lead_name is not None and lead_email is not None:
+    if ai_agent_id:
         conn = get_db_connection()
         if conn:
             try:
@@ -401,7 +387,7 @@ async def handle_message():
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('connected to the OpenAI Realtime API')
 
-            await send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email)
+            await send_Session_update(openai_ws,prompt_to_use)
 
              # Send the specific audio_message as initial prompt
             initial_prompt = {
@@ -442,21 +428,16 @@ async def receive_from_plivo(plivo_ws, openai_ws):
             message = await plivo_ws.receive()
             data = json.loads(message)
 
-            if data.get("event") == "media" and openai_ws.open:
+            if data['event'] == 'media' and openai_ws.open:
                 audio_append = {
                     "type": "input_audio_buffer.append",
-                    "audio": data["media"]["payload"]
+                    "audio": data['media']['payload']
                 }
                 await openai_ws.send(json.dumps(audio_append))
 
-            elif data.get("event") == "start":
+            elif data['event'] == "start":
                 print("Plivo Audio Stream Started")
-                plivo_ws.stream_id = data["start"]["streamId"]
-
-    except asyncio.CancelledError:
-        # 🔥 IMPORTANT → clean exit
-        print("receive_from_plivo task cancelled cleanly")
-        raise
+                plivo_ws.stream_id = data['start']['streamId']
 
     except websockets.ConnectionClosed:
         print("Plivo server closed connection")
@@ -602,20 +583,18 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
 # ===============================================================
 # HANDLE FUNCTION: assign_customer_disposition
 # ===============================================================
-
 async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversation_state):
     print("\n=== Saving Disposition ===")
     print(args)
     ai_greeting_instruction = ''
     transfer_result = None
-    follow_up_time = args.get("followup_time")
     if(args.get("disposition") != None):
         if(args.get("disposition") == 'Live Transfer'):
             transfer_result = await transfer_call(conversation_state['lead_id'],1,conversation_state['site'],conversation_state['server'])
         elif(args.get("disposition") == 'Truck Rental'):
             transfer_result = await transfer_call(conversation_state['lead_id'],2,conversation_state['site'],conversation_state['server'])
         else:
-            await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"),follow_up_time)
+            await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"))
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
     
     # Simulate DB save here
@@ -1045,7 +1024,7 @@ async def transfer_call(lead_id,transfer_type,site,server):
 
 
 
-async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
+async def dispostion_status_update(lead_id, disposition_val):
     try:
 
         if disposition_val == 'DNC':
@@ -1080,15 +1059,11 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
             disposition = 16 
         else:
             disposition = 17
-
         params = {
-                "lead_id": lead_id,
-                "disposition": disposition
-            }
-
-        if disposition == 4:
-            params["followupdatetime"] = follow_up_time
-            print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
+            "lead_id": lead_id,
+            "disposition": disposition
+        }
+        print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         # Build the URL with proper encoding
         query_string = urlencode(params, quote_via=quote)
         redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
@@ -1099,27 +1074,16 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
     except Exception as e:
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
-
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email):
-
-    if lead_name is not None and lead_email is not None:
-        print("outbound")
-        prompt_obj = {
-            "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
-        }
-    else:
-        print("inbound")
-        prompt_obj = {
-            "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07"
-        }
-    
+async def send_Session_update(openai_ws,prompt_to_use):
     session_update = {
         "type": "session.update",
         "session": {
-            "prompt": prompt_obj,
+            "prompt": {
+                "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
+            },
             "instructions": prompt_to_use,
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
