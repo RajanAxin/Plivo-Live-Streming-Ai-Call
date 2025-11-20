@@ -667,14 +667,20 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
 
         # final user transcription
         elif evt_type in (
-            "input_audio_transcription.done",
-            "conversation.item_input_audio_transcription.done",
-            "input_text.completed",
-            "input_text.final",
+            #"input_audio_buffer.committed",  # User finished speaking
+            "input_audio_buffer.transcription.completed",  # Transcription ready
+            "conversation.item.input_audio_transcription.completed",
         ):
-            final_text = response.get("text") or conversation_state.get("user_partial", "")
+            final_text = response.get("transcript") or response.get("text") or conversation_state.get("user_partial", "")
             final_text = final_text or ""
-            print("\n[USER SAID]:", final_text)
+            print(f"\n[USER SAID]: {final_text}")
+            if final_text!='':
+                await log_conversation(
+                    conversation_state['lead_id'],
+                    conversation_state['call_uuid'],
+                    'user',
+                    final_text
+                )
             conversation_state["ai_transcript"] = conversation_state.get("ai_transcript", "") + f"USER: {final_text}\n"
             conversation_state["user_partial"] = ""  # reset
 
@@ -795,7 +801,24 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
         if(args.get("disposition") == 'Live Transfer'):
             transfer_result = await transfer_call(conversation_state['lead_id'],1,conversation_state['site'],conversation_state['server'])
         elif(args.get("disposition") == 'Truck Rental'):
-            transfer_result = await transfer_call(conversation_state['lead_id'],2,conversation_state['site'],conversation_state['server'])
+
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor(dictionary=True, buffered=True)
+                cursor.execute("SELECT * FROM lead_call_contact_details WHERE lead_id = %s AND call_type = 'truck_rental_transfer'", (conversation_state['lead_id'],))
+                lead_truck_rental_data = cursor.fetchone()
+                cursor.close()
+                conn.close()
+            else:
+                raise Exception("Failed to get database connection")
+
+            if lead_truck_rental_data:
+                transfer_result = await transfer_call(conversation_state['lead_id'],2,conversation_state['site'],conversation_state['server'])
+            else:
+                await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"),follow_up_time)
+        
+        
+        
         else:
             await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"),follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
@@ -1330,6 +1353,12 @@ async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result
                 "model": "whisper-1",
             },
             "modalities": ["text", "audio"],
+            "turn_detection": {  # Add this if missing
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 500
+            }
         }
     }
     await openai_ws.send(json.dumps(session_update))
