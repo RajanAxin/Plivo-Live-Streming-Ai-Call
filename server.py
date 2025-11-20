@@ -146,8 +146,8 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
-    lead_name = lead_data['name'] if lead_data else ''
-    lead_email = lead_data['email'] if lead_data else ''
+    lead_name = lead_data['name'] if lead_data else 'None'
+    lead_email = lead_data['email'] if lead_data else 'None'
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
@@ -305,10 +305,8 @@ async def handle_message():
     call_uuid = websocket.args.get('CallUUID', 'unknown')
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
-    raw_name = websocket.args.get('lead_name')
-    raw_email = websocket.args.get('lead_email')
-    lead_name = None if raw_name in (None, "", "None", "null") else raw_name
-    lead_email = None if raw_email in (None, "", "None", "null") else raw_email
+    lead_name = websocket.args.get('lead_name', 'None')
+    lead_email = websocket.args.get('lead_email', 'None')
     lead_id = websocket.args.get('lead_id', 'unknown')
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
@@ -349,7 +347,7 @@ async def handle_message():
 
 
     prompt_text = ''  # Default to system message
-    if ai_agent_id and lead_name is not None and lead_email is not None:
+    if ai_agent_id and lead_name is not 'None' and lead_email is not 'None':
         conn = get_db_connection()
         if conn:
             try:
@@ -1103,7 +1101,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 # ===============================================================
 async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email):
 
-    if lead_name is not None and lead_email is not None:
+    if lead_name is not 'None' and lead_email is not 'None':
         print("outbound")
         prompt_obj = {
             "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
