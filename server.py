@@ -75,7 +75,7 @@ async def home():
     ai_agent_name = 'AI Agent'
     brand_name = ''
     ai_agent_id = None  # Initialize ai_agent_id
-    
+    lead_data_result = 0
     # Database queries using mysql.connector
     conn = get_db_connection()
     if conn:
@@ -95,6 +95,45 @@ async def home():
             cursor.execute("SELECT * FROM call_number WHERE number = %s", (to_number,))
             call_number = cursor.fetchone()
             
+            # cursor.execute("""
+            #     SELECT 
+            #         *,
+            #         CASE 
+            #             WHEN 
+            #                 name IS NULL OR name = '' OR
+            #                 email IS NULL OR email = '' OR
+            #                 from_zip IS NULL OR from_zip = '' OR
+            #                 to_zip IS NULL OR to_zip = '' OR
+            #                 move_date IS NULL OR move_date = '' OR
+            #                 move_size IS NULL OR move_size = ''
+            #             THEN 0
+            #             ELSE 1
+            #         END AS is_complete
+            #     FROM leads
+            #     WHERE phone = %s
+            #     ORDER BY lead_id DESC
+            #     LIMIT 1
+            # """, (from_number,))
+
+
+            cursor.execute("""
+                SELECT 
+                    *,
+                    CASE 
+                        WHEN 
+                            name IS NULL OR name = '' OR
+                            email IS NULL OR email = ''
+                        THEN 0
+                        ELSE 1
+                    END AS is_complete
+                FROM leads
+                WHERE phone = %s
+                ORDER BY lead_id DESC
+                LIMIT 1
+            """, (from_number,))
+            lead_data_res = cursor.fetchone()
+            lead_data_result = lead_data_res['is_complete']
+            print('adasdasdasdasd',lead_data_result)
             if call_number:
                 brand_id = call_number['brand_id']
                 
@@ -146,8 +185,6 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
-    lead_name = quote(lead_data['name']) if (lead_data and lead_data.get('name')) else None
-    lead_email = quote(lead_data['email']) if (lead_data and lead_data.get('email')) else None
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
@@ -158,8 +195,7 @@ async def home():
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
-    print(f"lead_name: {lead_name if lead_name else 'N/A'}")
-    print(f"lead_email: {lead_email if lead_email else 'N/A'}")
+    print(f"lead_data_result: {lead_data_result if lead_data_result else 'N/A'}")
     
     ws_url = (
     f"wss://{request.host}/media-stream?"
@@ -169,8 +205,6 @@ async def home():
     f"&amp;To={to_number}"
     f"&amp;lead_phone={lead_phone}"
     f"&amp;lead_id={lead_id}"
-    f"&amp;lead_name={lead_name}"
-    f"&amp;lead_email={lead_email}"
     f"&amp;t_lead_id={t_lead_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
@@ -180,6 +214,7 @@ async def home():
     f"&amp;site={site}"
     f"&amp;server={server}"
     f"&amp;lead_type={lead_type}"
+    f"&amp;lead_data_result={lead_data_result}"
     )              
     print('ws-url',ws_url)
     # XML response
@@ -305,8 +340,6 @@ async def handle_message():
     call_uuid = websocket.args.get('CallUUID', 'unknown')
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
-    lead_name = websocket.args.get('lead_name')
-    lead_email = websocket.args.get('lead_email')
     lead_id = websocket.args.get('lead_id', 'unknown')
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
@@ -314,14 +347,14 @@ async def handle_message():
     site = websocket.args.get('site', 'unknown')
     server = websocket.args.get('server', 'unknown')
     lead_type = websocket.args.get('lead_type', 'unknown')
+    lead_data_result = websocket.args.get('lead_data_result', 'unknown')
     print('lead_id', lead_id)
+    print('lead_data_result', lead_data_result)
     print('audio_message', audio_message)
     print('voice_name', voice_name)
     print('ai_agent_id', ai_agent_id)
     print('lead_timezone', lead_timezone)
     print('ai_agent_name', ai_agent_name)
-    print('lead_name', lead_name)
-    print('lead_email', lead_email)
     print('lead_phone', lead_phone)
     print('lead_type', lead_type)
     # Initialize conversation state with lock for active_response
@@ -347,7 +380,7 @@ async def handle_message():
 
 
     prompt_text = ''  # Default to system message
-    if ai_agent_id and lead_name != 'None' and lead_email != 'None':
+    if ai_agent_id and lead_data_result == '1':
         conn = get_db_connection()
         if conn:
             try:
@@ -390,8 +423,8 @@ async def handle_message():
     prompt_to_use = prompt_text
     print(f"prompt_text (after replacements): {repr(prompt_to_use)}")
 
-
-    url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
+    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+    #url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Beta": "realtime=v1",
@@ -401,7 +434,7 @@ async def handle_message():
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('connected to the OpenAI Realtime API')
 
-            await send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email)
+            await send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result)
 
              # Send the specific audio_message as initial prompt
             initial_prompt = {
@@ -441,25 +474,21 @@ async def receive_from_plivo(plivo_ws, openai_ws):
         while True:
             message = await plivo_ws.receive()
             data = json.loads(message)
-
             if data['event'] == 'media' and openai_ws.open:
                 audio_append = {
                     "type": "input_audio_buffer.append",
                     "audio": data['media']['payload']
                 }
                 await openai_ws.send(json.dumps(audio_append))
-
             elif data['event'] == "start":
-                print("Plivo Audio Stream Started")
+                print('Plivo Audio stream has started')
                 plivo_ws.stream_id = data['start']['streamId']
-
     except websockets.ConnectionClosed:
-        print("Plivo server closed connection")
+        print('Connection closed for the plivo audio streaming servers')
         if openai_ws.open:
             await openai_ws.close()
-
     except Exception as e:
-        print(f"Error receiving from Plivo: {e}")
+        print(f"Error during Plivo's websocket communication: {e}")
 
 
 # ===============================================================
@@ -483,7 +512,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         ):
             text = response.get("delta") or response.get("text") or ""
             conversation_state["user_partial"] = conversation_state.get("user_partial", "") + text
-            #print("[USER PARTIAL]:", text)
+            print("[USER PARTIAL]:", text)
 
         # final user transcription
         elif evt_type in (
@@ -714,8 +743,29 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
             update_data['to_zip'] = args['to_zip']
             api_update_data['to_zipcode'] = args['to_zip']
         if args.get('move_size'):
-            update_data['move_size'] = args['move_size']
-            api_update_data['move_size_id'] = args['move_size']
+            move_size_lower = args['move_size'].lower()
+        
+            if re.search(r'\bstudio(\s*(apartment|room))?\b', move_size_lower):
+                update_data['move_size'] = 1
+                api_update_data['move_size_id'] = 1
+            elif re.search(r'\b(1\s*bed(room)?s?|one\s*bed(room)?s?|1\s*br|1\s*bhk)\b', move_size_lower):
+                update_data['move_size'] = 2
+                api_update_data['move_size_id'] = 2
+            elif re.search(r'\b(2\s*bed(room)?s?|two\s*bed(room)?s?|2\s*br|2\s*bhk)\b', move_size_lower):
+                update_data['move_size'] = 3
+                api_update_data['move_size_id'] = 3
+            elif re.search(r'\b(3\s*bed(room)?s?|three\s*bed(room)?s?|3\s*br|3\s*bhk)\b', move_size_lower):
+                update_data['move_size'] = 4
+                api_update_data['move_size_id'] = 4
+            elif re.search(r'\b(4\s*bed(room)?s?|four\s*bed(room)?s?|4\s*br|4\s*bhk)\b', move_size_lower):
+                update_data['move_size'] = 5
+                api_update_data['move_size_id'] = 5
+            elif re.search(r'\b(5\s*\+|5\s*bed(room)?s?|five\s*bed(room)?s?|5\s*br|5\s*bhk)\b', move_size_lower):
+                update_data['move_size'] = 6
+                api_update_data['move_size_id'] = 6
+            else:
+                update_data['move_size'] = args['move_size']
+                api_update_data['move_size_id'] = args['move_size']
         if args.get('move_date'):
             original_date = args['move_date']
             try:
@@ -1099,9 +1149,9 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email):
+async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result):
 
-    if lead_name != 'None' and lead_email != 'None':
+    if lead_data_result == '1':
         print("outbound")
         prompt_obj = {
             "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
@@ -1120,7 +1170,7 @@ async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_e
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
             "input_audio_transcription": {
-                "model": "whisper-1"
+                "model": "whisper-1",
             },
             "modalities": ["text", "audio"],
         }
