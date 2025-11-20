@@ -5,6 +5,7 @@ import websockets
 import json
 import re
 import base64
+import openai
 import requests
 import aiohttp
 from database import get_db_connection
@@ -22,6 +23,92 @@ if not OPENAI_API_KEY:
 PORT = 5000
 
 app = Quart(__name__)
+
+def download_file(url, save_as="input.mp3"):
+    """Download MP3 from URL"""
+    response = requests.get(url, stream=True)
+    if response.status_code == 200:
+        with open(save_as, "wb") as f:
+            f.write(response.content)
+        return save_as
+    else:
+        raise Exception(f"Failed to download file: {response.status_code}")
+
+def transcribe(file_path):
+    """Transcribe audio using OpenAI Whisper"""
+    with open(file_path, "rb") as f:
+        transcript = openai.audio.transcriptions.create(
+            model="whisper-1",
+            file=f
+        )
+    return transcript.text
+
+def segment_speakers(transcript_text: str):
+    """Ask GPT to split transcript into Agent/Customer speakers"""
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a call transcript formatter."},
+            {"role": "user", "content": f"""
+            Split this transcript into two speakers: Agent and Customer.
+            Keep the order of the conversation, and don't add extra text.
+            Keep the correct back-and-forth flow. 
+            Transcript:
+            {transcript_text}
+            After splitting, analyze the conversation and return the final disposition in JSON.
+
+        Possible dispositions are:
+        - Not Connected
+        - Live Transfer
+        - DNC
+        - Not Interested
+        - Follow Up
+        - No Buyer
+        - Voice Message
+        - Wrong Phone
+        - Booked
+        - Booked with Us
+        - Booked with PODs
+        - Booked with Truck Rental
+        - Truck Rental
+        - IB Pickup
+        - No Answer
+        - Business Relay
+        Output format (JSON only):
+        {{
+            "conversation": [
+                    {{ "speaker": "Agent", "text": "..." }},
+                    {{ "speaker": "Customer", "text": "..." }}
+                ],
+                "disposition": "<one_of_the_above>"
+        }}
+            """}
+        ],
+        response_format={"type": "json_object"}  # force valid JSON
+    )
+    return response.choices[0].message.content
+
+@app.get("/disposition_process")
+def disposition_process():
+    try:
+        # Get the mp3_url from query parameters
+        mp3_url = request.args.get('mp3_url')
+        
+        if not mp3_url:
+            return {"error": "mp3_url parameter is required"}, 400
+        
+        file_path = download_file(mp3_url)
+        text = transcribe(file_path)
+        result_json = segment_speakers(text)
+        os.remove(file_path)
+        # Parse the JSON string to a Python dictionary
+        result_dict = json.loads(result_json)
+        
+        # Return the parsed dictionary
+        return result_dict
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 def ensure_dict(val):
     # If it's already a dict → return as is
