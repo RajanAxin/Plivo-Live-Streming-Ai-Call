@@ -177,7 +177,7 @@ async def home():
     f"&amp;lead_timezone={lead_timezone}"
     f"&amp;site={site}"
     f"&amp;server={server}"
-    f"&amp;lead_type={lead_type}"
+    #f"&amp;lead_type={lead_type}"
     )              
     
     # XML response
@@ -313,7 +313,7 @@ async def handle_message():
     lead_phone = websocket.args.get('lead_phone', 'unknown')
     site = websocket.args.get('site', 'unknown')
     server = websocket.args.get('server', 'unknown')
-    lead_type = websocket.args.get('lead_type', 'unknown')
+    lead_type = websocket.args.get('lead_type', 'outbound')
     print('lead_id', lead_id)
     print('audio_message', audio_message)
     print('voice_name', voice_name)
