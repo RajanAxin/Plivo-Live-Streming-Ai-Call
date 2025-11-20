@@ -1303,7 +1303,9 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         elif disposition_val == 'No Answer':
             disposition = 15
         elif disposition_val == 'Business Relay':
-            disposition = 16 
+            disposition = 16
+        elif disposition_val == 'Agent Transfer':
+            disposition = 18 
         else:
             disposition = 17
 
