@@ -423,8 +423,8 @@ async def handle_message():
     prompt_to_use = prompt_text
     print(f"prompt_text (after replacements): {repr(prompt_to_use)}")
 
-    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
-    #url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
+    #url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+    url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Beta": "realtime=v1",
