@@ -347,7 +347,7 @@ async def handle_message():
 
 
     prompt_text = ''  # Default to system message
-    if ai_agent_id and lead_name is not 'None' and lead_email is not 'None':
+    if ai_agent_id and lead_name and lead_name != "None" and lead_email and lead_email != "None":
         conn = get_db_connection()
         if conn:
             try:
@@ -1101,7 +1101,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 # ===============================================================
 async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email):
 
-    if lead_name is not 'None' and lead_email is not 'None':
+    if lead_name and lead_name != "None" and lead_email and lead_email != "None":
         print("outbound")
         prompt_obj = {
             "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
