@@ -442,16 +442,21 @@ async def receive_from_plivo(plivo_ws, openai_ws):
             message = await plivo_ws.receive()
             data = json.loads(message)
 
-            if data['event'] == 'media' and openai_ws.open:
+            if data.get("event") == "media" and openai_ws.open:
                 audio_append = {
                     "type": "input_audio_buffer.append",
-                    "audio": data['media']['payload']
+                    "audio": data["media"]["payload"]
                 }
                 await openai_ws.send(json.dumps(audio_append))
 
-            elif data['event'] == "start":
+            elif data.get("event") == "start":
                 print("Plivo Audio Stream Started")
-                plivo_ws.stream_id = data['start']['streamId']
+                plivo_ws.stream_id = data["start"]["streamId"]
+
+    except asyncio.CancelledError:
+        # 🔥 IMPORTANT → clean exit
+        print("receive_from_plivo task cancelled cleanly")
+        raise
 
     except websockets.ConnectionClosed:
         print("Plivo server closed connection")
