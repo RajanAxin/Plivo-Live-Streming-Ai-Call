@@ -4,6 +4,7 @@ import asyncio
 import websockets
 import json
 import re
+import concurrent.futures
 import base64
 import openai
 import requests
@@ -109,6 +110,69 @@ def disposition_process():
         
     except Exception as e:
         return {"error": str(e)}
+
+
+# Initialize database table
+def initialize_database():
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            # Create conversation_messages table if it doesn't exist
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_messages (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    lead_id INT NOT NULL DEFAULT '0',
+                    conversation_id VARCHAR(255) NOT NULL,
+                    speaker ENUM('system', 'user', 'assistant') NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX (conversation_id)
+                )
+            """)
+            conn.commit()
+            print("Database initialized successfully")
+        except Exception as e:
+            print(f"Database initialization error: {e}")
+        finally:
+            if conn.is_connected():
+                cursor.close()
+                conn.close()
+    else:
+        print("Failed to get database connection for initialization")
+
+# Function to log conversation to database
+def log_conversation_to_db(lead_id, conversation_id, speaker, content):
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            query = """
+                INSERT INTO conversation_messages (lead_id, conversation_id, speaker, content)
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(query, (lead_id, conversation_id, speaker, content))
+            conn.commit()
+            print(f"[DB] Logged {speaker} message for conversation {conversation_id}")
+        except Exception as e:
+            print(f"Database error: {e}")
+        finally:
+            if conn.is_connected():
+                cursor.close()
+                conn.close()
+    else:
+        print("Failed to get database connection")
+
+# Async wrapper for database logging
+async def log_conversation(lead_id, conversation_id, speaker, content):
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        await loop.run_in_executor(
+            pool, 
+            log_conversation_to_db, 
+            lead_id, conversation_id, speaker, content
+        )
+
 
 def ensure_dict(val):
     # If it's already a dict → return as is
@@ -453,7 +517,7 @@ async def handle_message():
         't_lead_id': t_lead_id,
         'site': site,
         'server': server,
-        'call_uuid': websocket.args.get('CallUUID', 'unknown'),
+        'call_uuid': call_uuid,
         'from_number': websocket.args.get('From', ''),
         'to_number': websocket.args.get('To', ''),
         'lead_phone': lead_phone,
@@ -626,6 +690,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         elif evt_type == "response.audio_transcript.done":
             full = conversation_state.get("current_ai_text", "") or response.get("text", "") or ""
             print("\n[AI SAID]:", full)
+            await log_conversation(
+                    conversation_state['lead_id'],
+                    conversation_state['call_uuid'],
+                    'assistant',
+                    full
+                )
             conversation_state["ai_transcript"] = conversation_state.get("ai_transcript", "") + f"AI: {full}\n"
             conversation_state["current_ai_text"] = ""  # reset
 
