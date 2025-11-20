@@ -158,8 +158,8 @@ async def home():
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
-    print(f"lead_name: {lead_name if lead_name else 'N/A'}")
-    print(f"lead_email: {lead_email if lead_email else 'N/A'}")
+    print(f"lead_name: {lead_name}")
+    print(f"lead_email: {lead_email}")
     
     ws_url = (
     f"wss://{request.host}/media-stream?"
