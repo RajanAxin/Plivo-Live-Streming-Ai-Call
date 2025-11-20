@@ -158,6 +158,8 @@ async def home():
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
+    print(f"lead_name: {lead_name if lead_name else 'N/A'}")
+    print(f"lead_email: {lead_email if lead_email else 'N/A'}")
     
     ws_url = (
     f"wss://{request.host}/media-stream?"
@@ -177,9 +179,9 @@ async def home():
     f"&amp;lead_timezone={lead_timezone}"
     f"&amp;site={site}"
     f"&amp;server={server}"
-    f"&amp;lead_type={quote(lead_type)}"
+    f"&amp;lead_type={lead_type}"
     )              
-    
+    print('ws-url',ws_url)
     # XML response
     xml_data = f'''<?xml version="1.0"?>
     <Response>
@@ -442,21 +444,16 @@ async def receive_from_plivo(plivo_ws, openai_ws):
             message = await plivo_ws.receive()
             data = json.loads(message)
 
-            if data.get("event") == "media" and openai_ws.open:
+            if data['event'] == 'media' and openai_ws.open:
                 audio_append = {
                     "type": "input_audio_buffer.append",
-                    "audio": data["media"]["payload"]
+                    "audio": data['media']['payload']
                 }
                 await openai_ws.send(json.dumps(audio_append))
 
-            elif data.get("event") == "start":
+            elif data['event'] == "start":
                 print("Plivo Audio Stream Started")
-                plivo_ws.stream_id = data["start"]["streamId"]
-
-    except asyncio.CancelledError:
-        # 🔥 IMPORTANT → clean exit
-        print("receive_from_plivo task cancelled cleanly")
-        raise
+                plivo_ws.stream_id = data['start']['streamId']
 
     except websockets.ConnectionClosed:
         print("Plivo server closed connection")
@@ -465,6 +462,7 @@ async def receive_from_plivo(plivo_ws, openai_ws):
 
     except Exception as e:
         print(f"Error receiving from Plivo: {e}")
+
 
 # ===============================================================
 # RECEIVE FROM OPENAI → SEND AUDIO + HANDLE FUNCTIONS
@@ -1103,7 +1101,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws,prompt_to_use,lead_name,lead_email):
+async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_name,lead_email):
 
     if lead_name is not None and lead_email is not None:
         print("outbound")
