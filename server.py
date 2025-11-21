@@ -1227,10 +1227,10 @@ async def transfer_call(lead_id,transfer_type,site,server):
             'lead_id': lead_data.get('t_lead_id'),
             'categoryId': 1,
             'buffer_id_arr': '',
-            'campaignId': lead_data.get('campaign_id'),
-            'campaignScore': lead_data.get('campaign_score'),
+            'campaignId': lead_data.get('campaign_id_truck') if transfer_type == 2 else lead_data.get('campaign_id'),
+            'campaignScore': lead_data.get('campaign_score_truck') if transfer_type == 2 else lead_data.get('campaign_score'),
             'campaignNumber': lead_truck_rental_data.get('phone') if transfer_type == 2 else lead_data.get('mover_phone'),
-            'campaignPayout': lead_data.get('campaign_payout')
+            'campaignPayout': lead_data.get('campaign_payout_truck') if transfer_type == 2 else lead_data.get('campaign_payout'),
             }
             
             print(f"[TRANSFER] Payload: {payload}")
