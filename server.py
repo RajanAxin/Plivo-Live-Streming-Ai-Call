@@ -815,12 +815,12 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
             if lead_truck_rental_data:
                 transfer_result = await transfer_call(conversation_state['lead_id'],2,conversation_state['site'],conversation_state['server'])
             else:
-                await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"),follow_up_time)
+                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
         
         
         
         else:
-            await dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"),follow_up_time)
+            await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
     
     # Simulate DB save here
