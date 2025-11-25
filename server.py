@@ -54,6 +54,7 @@ def segment_speakers(transcript_text: str):
             Split this transcript into two speakers: Agent and Customer.
             Keep the order of the conversation, and don't add extra text.
             Keep the correct back-and-forth flow. 
+            In the conversation last if you recived Hello only then consider No Answer.
             Transcript:
             {transcript_text}
             After splitting, analyze the conversation and return the final disposition in JSON.
@@ -128,6 +129,16 @@ def initialize_database():
                     content TEXT NOT NULL,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     INDEX (conversation_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS function_responses (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    lead_id INT NOT NULL DEFAULT '0',
+                    function_response JSON NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX (lead_id)
                 )
             """)
             conn.commit()
@@ -206,6 +217,28 @@ def ensure_dict(val):
         "status": "FAILURE",
         "error": str(val)
     }
+
+
+async def log_to_dashboard(event_type, text, conversation_state):
+    try:
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        client.responses.create(
+            model="gpt-4.1",
+            input=[
+                {"role": "system", "content": f"Realtime event: {event_type}"},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Lead ID: {conversation_state['lead_id']}, "
+                        f"Call UUID: {conversation_state['call_uuid']}, "
+                        f"Message: {text}"
+                    )
+                }
+            ]
+        )
+        print("[DASHBOARD LOG SENT]")
+    except Exception as e:
+        print("[DASHBOARD LOG ERROR]:", e)
 
 
 @app.route("/answer", methods=["GET", "POST"])
@@ -574,8 +607,8 @@ async def handle_message():
     prompt_to_use = prompt_text
     print(f"prompt_text (after replacements): {repr(prompt_to_use)}")
 
-    #url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
-    url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
+    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+    #url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Beta": "realtime=v1",
@@ -595,7 +628,8 @@ async def handle_message():
                     "temperature": 0.8,
                     "instructions": (
                         f"Start with this exact phrase: '{audio_message}' "
-                         "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase.\n\n"
+                        #"You must always reply in English only, no matter what language the user speaks"
+                        "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase.\n\n"
                     )
                 }
             }
@@ -675,6 +709,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             final_text = final_text or ""
             print(f"\n[USER SAID]: {final_text}")
             if final_text!='':
+                #await log_to_dashboard("user_message", final_text, conversation_state)
                 await log_conversation(
                     conversation_state['lead_id'],
                     conversation_state['call_uuid'],
@@ -696,6 +731,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         elif evt_type == "response.audio_transcript.done":
             full = conversation_state.get("current_ai_text", "") or response.get("text", "") or ""
             print("\n[AI SAID]:", full)
+            #await log_to_dashboard("ai_message", full, conversation_state)
             await log_conversation(
                     conversation_state['lead_id'],
                     conversation_state['call_uuid'],
@@ -739,6 +775,17 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             item_id = response.get("item_id")
             call_id = response.get("call_id")
             print("\n=== FUNCTION CALL RECEIVED ===", fn, args)
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            #print(f'Received function call response: {response}')
+            args = json.loads(response['arguments'])
+            print(f'Received custom tool response: {args}')
+            cursor.execute("""
+                INSERT INTO function_responses (lead_id, function_response)
+                VALUES (%s, %s)
+            """, (conversation_state['lead_id'], json.dumps(args)))
+            conn.commit()
+            print(f"Successfully stored function response for lead_id: {conversation_state['lead_id']}")
             if fn == "assign_customer_disposition":
                 await handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "update_lead":
@@ -1228,7 +1275,7 @@ async def transfer_call(lead_id,transfer_type,site,server):
             'categoryId': 1,
             'buffer_id_arr': '',
             'campaignId': lead_data.get('campaign_id_truck') if transfer_type == 2 else lead_data.get('campaign_id'),
-            'campaignScore': lead_data.get('campaign_score_truck') if transfer_type == 2 else lead_data.get('campaign_score'),
+            'campaignScore': lead_data.get('campaign_score'),
             'campaignNumber': lead_truck_rental_data.get('phone') if transfer_type == 2 else lead_data.get('mover_phone'),
             'campaignPayout': lead_data.get('campaign_payout_truck') if transfer_type == 2 else lead_data.get('campaign_payout'),
             }
@@ -1355,12 +1402,12 @@ async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result
                 "model": "whisper-1",
             },
             "modalities": ["text", "audio"],
-            "turn_detection": {  # Add this if missing
-                "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 500
-            }
+            # "turn_detection": {
+            #     "type": "server_vad",
+            #     "threshold": 0.5,
+            #     "prefix_padding_ms": 300,
+            #     "silence_duration_ms": 500
+            # }
         }
     }
     await openai_ws.send(json.dumps(session_update))
@@ -1370,5 +1417,6 @@ async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result
 # MAIN START
 # ===============================================================
 if __name__ == "__main__":
+    initialize_database()
     print("Running server...")
     app.run(port=PORT)
