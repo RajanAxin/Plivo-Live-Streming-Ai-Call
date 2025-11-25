@@ -54,7 +54,7 @@ def segment_speakers(transcript_text: str):
             Split this transcript into two speakers: Agent and Customer.
             Keep the order of the conversation, and don't add extra text.
             Keep the correct back-and-forth flow. 
-            In the conversation last if you recived Hello only then consider No Answer.
+            In the conversation last if you recived Hello only then consider Only Call.
             Transcript:
             {transcript_text}
             After splitting, analyze the conversation and return the final disposition in JSON.
@@ -74,6 +74,7 @@ def segment_speakers(transcript_text: str):
         - Booked with Truck Rental
         - Truck Rental
         - IB Pickup
+        - Only Call
         - No Answer
         - Business Relay
         Output format (JSON only):
