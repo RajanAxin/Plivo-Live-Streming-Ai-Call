@@ -628,7 +628,6 @@ async def handle_message():
                     "temperature": 0.8,
                     "instructions": (
                         f"Start with this exact phrase: '{audio_message}' "
-                        #"You must always reply in English only, no matter what language the user speaks"
                         "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase.\n\n"
                     )
                 }
@@ -1391,11 +1390,16 @@ async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result
             "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07"
         }
     
+    # Force English responses
+    english_rule = (
+        "IMPORTANT: Always respond in English only, even if the caller speaks "
+        "in another language. Never reply in any other language."
+    )
     session_update = {
         "type": "session.update",
         "session": {
             "prompt": prompt_obj,
-            "instructions": prompt_to_use,
+            "instructions": english_rule + "\n\n" + prompt_to_use,
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
             "input_audio_transcription": {
