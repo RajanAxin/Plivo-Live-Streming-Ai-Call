@@ -836,7 +836,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         print(traceback.format_exc())
 
 
-async def wait_for_speech_done():
+async def wait_for_speech_done(openai_ws):
     while True:
         msg = await openai_ws.recv()
         data = json.loads(msg)
@@ -919,7 +919,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                 }))
 
                 # 3️⃣ Wait for AI to finish speaking (EVENT LISTENER REQUIRED)
-                await wait_for_speech_done()
+                await wait_for_speech_done(openai_ws)
         
                 # 4️⃣ After speech is complete → do DB update
                 await dispostion_status_update(conversation_state['lead_id'], "Follow Up", next_run_time)
