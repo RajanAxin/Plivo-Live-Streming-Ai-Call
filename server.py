@@ -836,14 +836,32 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         print(traceback.format_exc())
 
 
-async def wait_for_speech_done(openai_ws):
+# quick fix version (not recommended long-term)
+async def wait_for_speech_done(openai_ws, timeout: float | None = 30.0):
+    deadline = None if timeout is None else asyncio.get_event_loop().time() + timeout
     while True:
-        msg = await openai_ws.recv()
-        data = json.loads(msg)
+        # optional: check timeout manually
+        if deadline is not None and asyncio.get_event_loop().time() > deadline:
+            print("wait_for_speech_done: timed out")
+            return False
+        try:
+            msg = await asyncio.wait_for(openai_ws.recv(), timeout=1.0)
+        except asyncio.TimeoutError:
+            # loop and check for overall timeout
+            continue
+        except Exception as e:
+            print("wait_for_speech_done: recv error", e)
+            return False
+
+        try:
+            data = json.loads(msg)
+        except Exception:
+            continue
 
         if data.get("type") == "response.completed":
             print("AI finished speaking.")
-            return
+            return True
+
 
 # ===============================================================
 # HANDLE FUNCTION: assign_customer_disposition
@@ -919,7 +937,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                 }))
 
                 # 3️⃣ Wait for AI to finish speaking (EVENT LISTENER REQUIRED)
-                await wait_for_speech_done(openai_ws)
+                await wait_for_speech_done(openai_ws,timeout=30)
         
                 # 4️⃣ After speech is complete → do DB update
                 await dispostion_status_update(conversation_state['lead_id'], "Follow Up", next_run_time)
