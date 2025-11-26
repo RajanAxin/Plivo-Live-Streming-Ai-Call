@@ -836,33 +836,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         print(traceback.format_exc())
 
 
-# quick fix version (not recommended long-term)
-async def wait_for_speech_done(openai_ws, timeout: float | None = 30.0):
-    deadline = None if timeout is None else asyncio.get_event_loop().time() + timeout
-    while True:
-        # optional: check timeout manually
-        if deadline is not None and asyncio.get_event_loop().time() > deadline:
-            print("wait_for_speech_done: timed out")
-            return False
-        try:
-            msg = await asyncio.wait_for(openai_ws.recv(), timeout=1.0)
-        except asyncio.TimeoutError:
-            # loop and check for overall timeout
-            continue
-        except Exception as e:
-            print("wait_for_speech_done: recv error", e)
-            return False
-
-        try:
-            data = json.loads(msg)
-        except Exception:
-            continue
-
-        if data.get("type") == "response.completed":
-            print("AI finished speaking.")
-            return True
-
-
 # ===============================================================
 # HANDLE FUNCTION: assign_customer_disposition
 # ===============================================================
@@ -904,43 +877,36 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
             else:
                 print("NO: Time is outside 8 AM - 8 PM")
                 next_run_time = (est_time + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
-                ai_greeting_instruction = (
-                    "I've saved the Follow Up disposition because it is outside business hours."
-                )
-
+                ai_greeting_instruction = "I've saved the Follow Up disposition. becuase it's outside of business hours"
                 saved_output = {
                     "status": "saved",
-                    "disposition": "Follow Up",
+                    "disposition": 'Follow Up',
                     "customer_response": ai_greeting_instruction,
-                    "followup_time": "",
+                    "followup_time": '',
                     "notes": ai_greeting_instruction,
                 }
 
-                # 1️⃣ Return function-call output
+                # 1️⃣ Send function output back to OpenAI
                 await openai_ws.send(json.dumps({
-                    "type": "conversation.item.create",
-                    "item": {
-                        "id": item_id,
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": json.dumps(saved_output)
-                    }
-                }))
-        
-                # 2️⃣ Tell AI to speak
-                await openai_ws.send(json.dumps({
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["audio", "text"],
-                        "instructions": ai_greeting_instruction
-                    }
-                }))
+                     "type": "conversation.item.create",
+                     "item": {
+                         "id": item_id,
+                         "type": "function_call_output",
+                         "call_id": call_id,
+                         "output": json.dumps(saved_output)
+                     }
+                 }))
 
-                # 3️⃣ Wait for AI to finish speaking (EVENT LISTENER REQUIRED)
-                await wait_for_speech_done(openai_ws,timeout=30)
-        
-                # 4️⃣ After speech is complete → do DB update
-                await dispostion_status_update(conversation_state['lead_id'], "Follow Up", next_run_time)
+                  # 2️⃣ Tell the model to speak confirmation
+                await openai_ws.send(json.dumps({
+                     "type": "response.create",
+                     "response": {
+                         "modalities": ["audio", "text"],
+                         "instructions": ai_greeting_instruction
+                     }
+                 }))
+                #await asyncio.sleep(6)
+                #await dispostion_status_update(conversation_state['lead_id'], "Follow Up",next_run_time)
         
         else:
             await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
