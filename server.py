@@ -887,11 +887,11 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
             est = pytz.timezone("America/New_York")
             est_time = datetime.now(est)
             current_hour = est_time.hour
-            if 8 <= current_hour < 20:   # 20 means 8 PM
-                print("YES: Time is between 8 AM and 8 PM")
+            if 8 <= current_hour < 18:   # 12 means 8 PM
+                print("YES: Time is between 8 AM and 6 PM")
                 await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
             else:
-                print("NO: Time is outside 8 AM - 8 PM")
+                print("NO: Time is outside 8 AM - 6 PM")
                 next_run_time = (est_time + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
                 ai_greeting_instruction = "I've saved the Follow Up disposition. becuase it's outside of business hours"
                 saved_output = {
