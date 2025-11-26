@@ -372,6 +372,7 @@ async def home():
                 conn.close()
     
     lead_id = lead_data['lead_id'] if lead_data else 0
+    brand_id = brand_id
     call_uuid = lead_data['calluuid'] if lead_data else 0
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
@@ -380,6 +381,7 @@ async def home():
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
+    print(f"brand_id: {brand_id if brand_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
     print(f"lead_data_result: {lead_data_result if lead_data_result else 'N/A'}")
@@ -392,6 +394,7 @@ async def home():
     f"&amp;To={to_number}"
     f"&amp;lead_phone={lead_phone}"
     f"&amp;lead_id={lead_id}"
+    f"&amp;brand_id={brand_id}"
     f"&amp;t_lead_id={t_lead_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
@@ -528,6 +531,7 @@ async def handle_message():
     voice_name = websocket.args.get('voice_name', 'alloy')
     ai_agent_id = websocket.args.get('ai_agent_id')  # Get ai_agent_id from URL params
     lead_id = websocket.args.get('lead_id', 'unknown')
+    brand_id = websocket.args.get('brand_id', 'unknown')
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
     lead_phone = websocket.args.get('lead_phone', 'unknown')
@@ -621,7 +625,7 @@ async def handle_message():
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('connected to the OpenAI Realtime API')
 
-            await send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result)
+            await send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
 
              # Send the specific audio_message as initial prompt
             initial_prompt = {
@@ -883,7 +887,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
             est = pytz.timezone("America/New_York")
             est_time = datetime.now(est)
             current_hour = est_time.hour
-            if 8 <= current_hour < 14:   # 20 means 8 PM
+            if 8 <= current_hour < 20:   # 20 means 8 PM
                 print("YES: Time is between 8 AM and 8 PM")
                 await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
             else:
@@ -1436,13 +1440,19 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result):
+async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result):
 
     if lead_data_result == '1':
-        print("outbound")
-        prompt_obj = {
-            "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
-        }
+        if brand_id == '2':
+            print("vm-outbound")
+            prompt_obj = {
+                "id": "pmpt_69262d5672f4819399859365246218520c851a4afbab2899"
+            }
+        else:
+            print("outbound")
+            prompt_obj = {
+                "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
+            }
     else:
         print("inbound")
         prompt_obj = {
