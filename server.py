@@ -1111,7 +1111,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
 
         async with aiohttp.ClientSession() as session:
             # small delay (kept from your original)
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
             async with session.post(
                 url,
                 headers={'Content-Type': 'application/json'},
