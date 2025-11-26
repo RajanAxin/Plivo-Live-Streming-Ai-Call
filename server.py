@@ -840,6 +840,18 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
 # HANDLE FUNCTION: assign_customer_disposition
 # ===============================================================
 
+# Define this helper function at the module level, outside any other function
+async def delayed_disposition_update(lead_id, disposition, follow_up_time):
+    """Helper function to update disposition after a 6-second delay"""
+    try:
+        print(f"[DELAYED_DISPOSITION] Waiting 6 seconds before updating disposition...")
+        await asyncio.sleep(6)
+        print(f"[DELAYED_DISPOSITION] Updating disposition for lead {lead_id} to {disposition}")
+        await dispostion_status_update(lead_id, disposition, follow_up_time)
+        print(f"[DELAYED_DISPOSITION] Disposition update completed for lead {lead_id}")
+    except Exception as e:
+        print(f"[DELAYED_DISPOSITION] Error updating disposition: {e}")
+
 async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversation_state):
     print("\n=== Saving Disposition ===")
     print(args)
@@ -907,6 +919,10 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                  }))
                 #await asyncio.sleep(6)
                 #await dispostion_status_update(conversation_state['lead_id'], "Follow Up",next_run_time)
+                # ✅ THIS IS WHERE YOU PLACE THE DELAYED CALL - INSIDE THE ELSE BLOCK
+                asyncio.create_task(
+                    delayed_disposition_update(conversation_state['lead_id'], "Follow Up", next_run_time)
+                )
         
         else:
             await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
