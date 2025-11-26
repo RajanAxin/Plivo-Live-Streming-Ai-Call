@@ -13,6 +13,8 @@ from database import get_db_connection
 from urllib.parse import quote, urlencode
 from dotenv import load_dotenv
 from dateutil import parser
+from datetime import datetime, timedelta
+import pytz
 import os
 
 load_dotenv(dotenv_path='.env', override=True)
@@ -864,7 +866,46 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
             else:
                 await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
         
-        
+        elif(args.get("disposition") == 'Agent Transfer'):
+            
+            est = pytz.timezone("America/New_York")
+            est_time = datetime.now(est)
+            current_hour = est_time.hour
+            if 8 <= current_hour < 14:   # 20 means 8 PM
+                print("YES: Time is between 8 AM and 8 PM")
+                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
+            else:
+                print("NO: Time is outside 8 AM - 8 PM")
+                next_run_time = (est_time + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+                ai_greeting_instruction = "I've saved the Follow Up disposition. becuase it's outside of business hours?"
+                saved_output = {
+                    "status": "saved",
+                    "disposition": 'Follow Up',
+                    "customer_response": ai_greeting_instruction,
+                    "followup_time": '',
+                    "notes": ai_greeting_instruction,
+                }
+
+                # 1️⃣ Send function output back to OpenAI
+                await openai_ws.send(json.dumps({
+                     "type": "conversation.item.create",
+                     "item": {
+                         "id": item_id,
+                         "type": "function_call_output",
+                         "call_id": call_id,
+                         "output": json.dumps(saved_output)
+                     }
+                 }))
+
+                  # 2️⃣ Tell the model to speak confirmation
+                await openai_ws.send(json.dumps({
+                     "type": "response.create",
+                     "response": {
+                         "modalities": ["audio", "text"],
+                         "instructions": ai_greeting_instruction
+                     }
+                 }))
+                await dispostion_status_update(conversation_state['lead_id'], "Follow Up",next_run_time)
         
         else:
             await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
@@ -888,7 +929,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
     # If no FAILURE, continue with normal flow
     saved_output = {
         "status": "saved",
-        "disposition": args.get("disposition"),
+        "disposition": 'Follow Up',
         "customer_response": args.get("customer_response"),
         "followup_time": args.get("followup_time"),
         "notes": args.get("notes"),
@@ -1390,7 +1431,7 @@ async def send_Session_update(openai_ws,prompt_to_use,lead_type,lead_data_result
         prompt_obj = {
             "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07"
         }
-    
+    print('prompt_check',prompt_to_use)
     # Force English responses
     session_update = {
         "type": "session.update",
