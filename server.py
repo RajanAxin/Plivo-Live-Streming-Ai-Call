@@ -905,6 +905,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                          "instructions": ai_greeting_instruction
                      }
                  }))
+                await asyncio.sleep(6)
                 await dispostion_status_update(conversation_state['lead_id'], "Follow Up",next_run_time)
         
         else:
