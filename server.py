@@ -842,10 +842,10 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
 
 # Define this helper function at the module level, outside any other function
 async def delayed_disposition_update(lead_id, disposition, follow_up_time):
-    """Helper function to update disposition after a 6-second delay"""
+    """Helper function to update disposition after a 14-second delay"""
     try:
-        print(f"[DELAYED_DISPOSITION] Waiting 6 seconds before updating disposition...")
-        await asyncio.sleep(10)
+        print(f"[DELAYED_DISPOSITION] Waiting 14 seconds before updating disposition...")
+        await asyncio.sleep(14)
         print(f"[DELAYED_DISPOSITION] Updating disposition for lead {lead_id} to {disposition}")
         await dispostion_status_update(lead_id, disposition, follow_up_time)
         print(f"[DELAYED_DISPOSITION] Disposition update completed for lead {lead_id}")
