@@ -1313,7 +1313,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                         call_types_seen.add(call_type)
                         print(f"[TRANSFER] call_type {call_type} for phone {phone}")
                         normalized_phone = normalize_phone(phone) if phone else None
-                        if call_type == 1 and normalized_phone:
+                        if call_type == 'live_transfer' and normalized_phone:
                             try:
                                 conn2 = get_db_connection()
                                 if not conn2:
