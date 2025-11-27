@@ -1502,7 +1502,7 @@ async def company_avaliability(lead_id, transfer_type):
         if transfer_type == 1:
             cursor.execute(
                 "SELECT * FROM lead_call_contact_details "
-                "WHERE lead_id = %s AND call_type = 'live_trasnfer'",
+                "WHERE lead_id = %s AND call_type = 'live_trasnfer'"
                 "ORDER BY id",
                 (lead_id,)
             )
@@ -1511,7 +1511,7 @@ async def company_avaliability(lead_id, transfer_type):
         elif transfer_type == 2:
             cursor.execute(
                 "SELECT * FROM lead_call_contact_details "
-                "WHERE lead_id = %s AND call_type = 'truck_rental_transfer'",
+                "WHERE lead_id = %s AND call_type = 'truck_rental_transfer'"
                 "ORDER BY id",
                 (lead_id,)
             )
