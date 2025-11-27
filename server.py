@@ -1340,6 +1340,28 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
 
                 if not contacts_to_insert:
                     print("[TRANSFER] No live_transfer/truck_rental data to save.")
+
+                    try:
+                        conn = get_db_connection()
+                        if not conn:
+                            raise Exception("Failed to get DB connection")
+
+                        cursor = conn.cursor(buffered=True)
+
+                        delete_sql = """
+                            DELETE FROM lead_call_contact_details
+                            WHERE lead_id = %s
+                        """
+
+                        print(f"[TRANSFER] Deleting existing contacts for lead_id={lead_id}")
+                        cursor.execute(delete_sql, (lead_id,))
+
+                        conn.commit()
+                        cursor.close()
+                        print("[TRANSFER] Existing records deleted successfully.") 
+                    except Exception as e:
+                        print(f"[TRANSFER] Error while deleting records: {e}")
+                        return False
                     return True
 
                 # Insert contacts into DB, deleting existing ones for this lead & call_types first (if lead_id provided)
