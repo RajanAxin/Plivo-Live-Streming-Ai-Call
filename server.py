@@ -866,7 +866,13 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
 
     if args.get("disposition") is not None:
         if args.get("disposition") == 'Live Transfer':
-            transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
+            check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 1)
+            if check_company_avaliabe == None:
+                ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
+                await dispostion_status_update(conversation_state['lead_id'], "No Buyer", follow_up_time)
+            else:
+                ai_greeting_instruction = "Yes we have moving company avaliable"
+                transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
 
         elif args.get("disposition") == 'Truck Rental':
             conn = get_db_connection()
@@ -1402,6 +1408,49 @@ async def transfer_call(lead_id,transfer_type,site,server):
             print(f"[TRANSFER] Error: {e}")
 
 
+async def company_avaliability(lead_id, transfer_type):
+    try:
+        print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+
+        conn = get_db_connection()
+        if not conn:
+            raise Exception("Failed to get database connection")
+
+        cursor = conn.cursor(dictionary=True, buffered=True)
+
+        # Initialize
+        company_details = None
+
+        # Fetch phone based on transfer_type
+        if transfer_type == 1:
+            cursor.execute(
+                "SELECT * FROM lead_call_contact_details "
+                "WHERE lead_id = %s AND call_type = 'live_trasnfer'",
+                (lead_id,)
+            )
+            company_details = cursor.fetchone()
+
+        elif transfer_type == 2:
+            cursor.execute(
+                "SELECT * FROM lead_call_contact_details "
+                "WHERE lead_id = %s AND call_type = 'truck_rental_transfer'",
+                (lead_id,)
+            )
+            company_details = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        # Return phone safely
+        if company_details and company_details.get("phone"):
+            return company_details.get("phone")
+        else:
+            return None
+
+    except Exception as e:
+        print(f"[TRANSFER ERROR] {e}")
+        return None
+        
 
 async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
     try:
