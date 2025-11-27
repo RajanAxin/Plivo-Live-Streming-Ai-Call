@@ -1311,6 +1311,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                             print(f"[TRANSFER] Skipping {key} — no name/phone present")
                             continue
                         call_types_seen.add(call_type)
+                        print(f"[TRANSFER] call_type {call_type} for normalized_phone {normalized_phone}")
                         normalized_phone = normalize_phone(phone) if phone else None
                         if call_type == 1 and normalized_phone:
                             try:
