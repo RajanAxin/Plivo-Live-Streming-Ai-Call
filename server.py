@@ -1503,6 +1503,7 @@ async def company_avaliability(lead_id, transfer_type):
             cursor.execute(
                 "SELECT * FROM lead_call_contact_details "
                 "WHERE lead_id = %s AND call_type = 'live_trasnfer'",
+                "ORDER BY id",
                 (lead_id,)
             )
             company_details = cursor.fetchone()
@@ -1511,6 +1512,7 @@ async def company_avaliability(lead_id, transfer_type):
             cursor.execute(
                 "SELECT * FROM lead_call_contact_details "
                 "WHERE lead_id = %s AND call_type = 'truck_rental_transfer'",
+                "ORDER BY id",
                 (lead_id,)
             )
             company_details = cursor.fetchone()
