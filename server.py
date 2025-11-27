@@ -1490,7 +1490,7 @@ async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
             "instructions": prompt_to_use,
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
-            "input_audio_transcription": {"model": "whisper-1", "language": "en"},  # Enable transcription
+            "input_audio_transcription": {"model": "whisper-1"},  # Enable transcription
             "modalities": ["text", "audio"],
             "turn_detection": {
                 "type": "server_vad",
