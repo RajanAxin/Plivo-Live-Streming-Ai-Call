@@ -948,6 +948,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
             print('status', status)
             if status == "FAILURE":
                 transfer_failed = True
+                await dispostion_status_update(conversation_state['lead_id'], "No Buyer",follow_up_time)
                 ai_greeting_instruction = transfer_error_message  # make model speak the error
         except Exception as e:
             print("Transfer result parsing error:", e)
