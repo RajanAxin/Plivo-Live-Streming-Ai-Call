@@ -866,8 +866,8 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
 
     if args.get("disposition") is not None:
         if args.get("disposition") == 'Live Transfer':
-            await asyncio.sleep(2)
             check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 1)
+            print('asdasdasdasdasdasd',check_company_avaliabe)
             if check_company_avaliabe == None:
                 ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
                 saved_output = {
