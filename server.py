@@ -1351,23 +1351,24 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 try:
                     cur = conn.cursor()
                     try:
-                        # If we have a valid lead_id (numeric), perform delete for the seen call_types
-                        if ret_lead_id and str(ret_lead_id).isdigit() and call_types_seen:
+                        # Ensure lead_id is valid before running delete
+                        if ret_lead_id and str(ret_lead_id).isdigit():
                             lead_id_int = int(ret_lead_id)
-                            call_types_list = list(call_types_seen)
-                            placeholders = ", ".join(["%s"] * len(call_types_list))
-                            delete_sql = f"""
+
+                            delete_sql = """
                                 DELETE FROM lead_call_contact_details
-                                WHERE lead_id = %s AND call_type IN ({placeholders})
+                                WHERE lead_id = %s
                             """
-                            params = [lead_id_int] + call_types_list
-                            print(f"[TRANSFER] Deleting existing contacts for lead_id={lead_id_int} call_types={call_types_list}")
-                            cur.execute(delete_sql, params)
+
+                            print(f"[TRANSFER] Deleting existing contacts for lead_id={lead_id_int}")
+                            cur.execute(delete_sql, (lead_id_int,))
                             print(f"[TRANSFER] Deleted {cur.rowcount} existing contact(s)")
                         else:
-                            print("[TRANSFER] No valid lead_id or no call_types to delete; skipping delete step.")
+                            print("[TRANSFER] Invalid or missing lead_id; skipping delete step.")
+
                     except Exception as e:
                         print(f"[TRANSFER] Error during delete step: {e}")
+
                         # proceed to inserts anyway
 
                     # Insert new contacts
