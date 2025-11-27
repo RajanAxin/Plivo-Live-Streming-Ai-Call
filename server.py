@@ -869,7 +869,38 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
             check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 1)
             if check_company_avaliabe == None:
                 ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
-                await dispostion_status_update(conversation_state['lead_id'], "No Buyer", follow_up_time)
+                saved_output = {
+                    "status": "saved",
+                    "disposition": 'No Buyer',
+                    "customer_response": ai_greeting_instruction,
+                    "followup_time": '',
+                    "notes": ai_greeting_instruction,
+                }
+
+                # 1️⃣ Send function output back to OpenAI (Follow Up saved because out of hours)
+                await openai_ws.send(json.dumps({
+                     "type": "conversation.item.create",
+                     "item": {
+                         "id": item_id,
+                         "type": "function_call_output",
+                         "call_id": call_id,
+                         "output": json.dumps(saved_output)
+                     }
+                 }))
+
+                # 2️⃣ Tell the model to speak confirmation
+                await openai_ws.send(json.dumps({
+                     "type": "response.create",
+                     "response": {
+                         "modalities": ["audio", "text"],
+                         "instructions": ai_greeting_instruction
+                     }
+                 }))
+
+                # schedule delayed disposition update (runs async in background)
+                asyncio.create_task(
+                    delayed_disposition_update(conversation_state['lead_id'], "No Buyer", follow_up_time)
+                )
             else:
                 ai_greeting_instruction = "Yes we have moving company avaliable"
                 transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
