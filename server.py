@@ -856,17 +856,19 @@ async def delayed_disposition_update(lead_id, disposition, follow_up_time):
     except Exception as e:
         print(f"[DELAYED_DISPOSITION] Error updating disposition: {e}")
 
-async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversation_state):
+
+async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Saving Disposition ===")
     print(args)
     ai_greeting_instruction = ''
     transfer_result = None
     follow_up_time = args.get("followup_time")
-    if(args.get("disposition") != None):
-        if(args.get("disposition") == 'Live Transfer'):
-            transfer_result = await transfer_call(conversation_state['lead_id'],1,conversation_state['site'],conversation_state['server'])
-        elif(args.get("disposition") == 'Truck Rental'):
 
+    if args.get("disposition") is not None:
+        if args.get("disposition") == 'Live Transfer':
+            transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
+
+        elif args.get("disposition") == 'Truck Rental':
             conn = get_db_connection()
             if conn:
                 cursor = conn.cursor(dictionary=True, buffered=True)
@@ -878,22 +880,21 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                 raise Exception("Failed to get database connection")
 
             if lead_truck_rental_data:
-                transfer_result = await transfer_call(conversation_state['lead_id'],2,conversation_state['site'],conversation_state['server'])
+                transfer_result = await transfer_call(conversation_state['lead_id'], 2, conversation_state['site'], conversation_state['server'])
             else:
-                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
-        
-        elif(args.get("disposition") == 'Agent Transfer'):
-            
+                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), follow_up_time)
+
+        elif args.get("disposition") == 'Agent Transfer':
             est = pytz.timezone("America/New_York")
             est_time = datetime.now(est)
             current_hour = est_time.hour
-            if 8 <= current_hour < 18:   # 12 means 8 PM
+            if 8 <= current_hour < 18:
                 print("YES: Time is between 8 AM and 6 PM")
-                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
+                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), follow_up_time)
             else:
                 print("NO: Time is outside 8 AM - 6 PM")
                 next_run_time = (est_time + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
-                ai_greeting_instruction = "I've saved the Follow Up disposition. becuase it's outside of business hours"
+                ai_greeting_instruction = "I've saved the Follow Up disposition. because it's outside of business hours"
                 saved_output = {
                     "status": "saved",
                     "disposition": 'Follow Up',
@@ -902,7 +903,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                     "notes": ai_greeting_instruction,
                 }
 
-                # 1️⃣ Send function output back to OpenAI
+                # 1️⃣ Send function output back to OpenAI (Follow Up saved because out of hours)
                 await openai_ws.send(json.dumps({
                      "type": "conversation.item.create",
                      "item": {
@@ -913,7 +914,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                      }
                  }))
 
-                  # 2️⃣ Tell the model to speak confirmation
+                # 2️⃣ Tell the model to speak confirmation
                 await openai_ws.send(json.dumps({
                      "type": "response.create",
                      "response": {
@@ -921,40 +922,61 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
                          "instructions": ai_greeting_instruction
                      }
                  }))
-                #await asyncio.sleep(6)
-                #await dispostion_status_update(conversation_state['lead_id'], "Follow Up",next_run_time)
-                # ✅ THIS IS WHERE YOU PLACE THE DELAYED CALL - INSIDE THE ELSE BLOCK
+
+                # schedule delayed disposition update (runs async in background)
                 asyncio.create_task(
                     delayed_disposition_update(conversation_state['lead_id'], "Follow Up", next_run_time)
                 )
-        
+                # exit early because we've already sent the response to OpenAI for this branch
+                return
+
         else:
-            await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"),follow_up_time)
+            await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
-    
-    # Simulate DB save here
-    # You can replace with real MySQL insert
-    # 🔍 If transfer_result exists → check for API FAILURE
+
+    # ----- Handle transfer_result if present -----
+    parsed_transfer = None
+    transfer_failed = False
+    transfer_error_message = None
+
     if transfer_result:
-        parsed = ensure_dict(transfer_result)
-        print('tresult',parsed)
+        parsed_transfer = ensure_dict(transfer_result)
+        print('tresult', parsed_transfer)
         try:
-            status = parsed.get("status")
-            api_error_message = parsed.get("error") or "Transfer failed."
-            print('status',status)
+            status = parsed_transfer.get("status")
+            transfer_error_message = parsed_transfer.get("error") or parsed_transfer.get("data") or "Transfer failed."
+            print('status', status)
             if status == "FAILURE":
-                ai_greeting_instruction = api_error_message
+                transfer_failed = True
+                ai_greeting_instruction = transfer_error_message  # make model speak the error
         except Exception as e:
             print("Transfer result parsing error:", e)
+            # keep going; don't crash — but set a generic message
+            transfer_failed = True
+            transfer_error_message = "Transfer failed (parse error)."
+            ai_greeting_instruction = transfer_error_message
 
-    # If no FAILURE, continue with normal flow
-    saved_output = {
-        "status": "saved",
-        "disposition": 'Follow Up',
-        "customer_response": args.get("customer_response"),
-        "followup_time": args.get("followup_time"),
-        "notes": args.get("notes"),
-    }
+    # ----- Build saved_output based on transfer outcome -----
+    if transfer_failed:
+        # include the API error message and the parsed transfer result in the function output
+        saved_output = {
+            "status": "saved",
+            "disposition": args.get("disposition") or 'Follow Up',
+            "customer_response": transfer_error_message,
+            "followup_time": args.get("followup_time"),
+            "notes": transfer_error_message,
+            "transfer_result": parsed_transfer,   # full parsed transfer result for debugging/record
+            "api_error": transfer_error_message,
+        }
+    else:
+        # normal saved output (no transfer failure)
+        saved_output = {
+            "status": "saved",
+            "disposition": 'Follow Up',
+            "customer_response": args.get("customer_response"),
+            "followup_time": args.get("followup_time"),
+            "notes": args.get("notes"),
+        }
 
     # 1️⃣ Send function output back to OpenAI
     await openai_ws.send(json.dumps({
@@ -967,7 +989,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id,conversati
         }
     }))
 
-    # 2️⃣ Tell the model to speak confirmation
+    # 2️⃣ Tell the model to speak confirmation / error (audio + text)
     await openai_ws.send(json.dumps({
         "type": "response.create",
         "response": {
