@@ -1503,16 +1503,16 @@ async def company_avaliability(lead_id, transfer_type):
         if transfer_type == 1:
             cursor.execute(
                 "SELECT * FROM lead_call_contact_details "
-                "WHERE lead_id = %s AND call_type = 'live_trasnfer'"
-                (lead_id,)
+                "WHERE lead_id = %s AND call_type = 'live_transfer'",
+                (lead_id,)   # <-- FIXED COMMA
             )
             company_details = cursor.fetchone()
 
         elif transfer_type == 2:
             cursor.execute(
                 "SELECT * FROM lead_call_contact_details "
-                "WHERE lead_id = %s AND call_type = 'truck_rental_transfer'"
-                (lead_id,)
+                "WHERE lead_id = %s AND call_type = 'truck_rental_transfer'",
+                (lead_id,)   # <-- FIXED COMMA
             )
             company_details = cursor.fetchone()
 
@@ -1528,6 +1528,7 @@ async def company_avaliability(lead_id, transfer_type):
     except Exception as e:
         print(f"[TRANSFER ERROR] {e}")
         return None
+
         
 
 async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
