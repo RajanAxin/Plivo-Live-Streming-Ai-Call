@@ -1071,7 +1071,7 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
                 api_update_data['move_date'] = original_date
         
         print('api_update_data',api_update_data)
-        api_success = await update_lead_to_external_api(openai_ws,item_id,api_update_data,conversation_state['call_uuid'], conversation_state['lead_id'],conversation_state['site'],conversation_state['server'])
+        api_success = await update_lead_to_external_api(api_update_data,conversation_state['call_uuid'], conversation_state['lead_id'],conversation_state['site'],conversation_state['server'])
         print(f"[TRANSFER] API call result: {api_success}")
 
         print(f"[DEBUG] Update data to be saved: {update_data}")
@@ -1147,7 +1147,7 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
         return False
 
 
-async def update_lead_to_external_api(openai_ws,item_id,api_update_data, call_u_id, lead_id, site, server):
+async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site, server):
     """
     Sends api_update_data to external updateailead endpoint and if the response
     contains live_transfer / truck_rental, delete existing rows for the lead & call_types
@@ -1235,18 +1235,7 @@ async def update_lead_to_external_api(openai_ws,item_id,api_update_data, call_u_
                 if not contacts_to_insert:
                     print("[TRANSFER] No live_transfer/truck_rental data to save.")
                     return True
-                else:
-                    print("[TRANSFER] live_transfer/truck_rental data to save.")
-                    await openai_ws.send(json.dumps({
-                        "type": "conversation.item.create",
-                        "item": {
-                            "id": item_id,
-                            "type": "function_call_output",
-                            "call_id": call_u_id,
-                            "output": 'Yes moving company is avliable please ask for moving company call transfer'
-                        }
-                    }))
-                
+
                 # Insert contacts into DB, deleting existing ones for this lead & call_types first (if lead_id provided)
                 conn = get_db_connection()
                 if not conn:
