@@ -906,20 +906,44 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
                 transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
 
         elif args.get("disposition") == 'Truck Rental':
-            conn = get_db_connection()
-            if conn:
-                cursor = conn.cursor(dictionary=True, buffered=True)
-                cursor.execute("SELECT * FROM lead_call_contact_details WHERE lead_id = %s AND call_type = 'truck_rental_transfer'", (conversation_state['lead_id'],))
-                lead_truck_rental_data = cursor.fetchone()
-                cursor.close()
-                conn.close()
-            else:
-                raise Exception("Failed to get database connection")
+            check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 2)
+            if check_company_avaliabe == None:
+                ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
+                saved_output = {
+                    "status": "saved",
+                    "disposition": 'No Buyer',
+                    "customer_response": ai_greeting_instruction,
+                    "followup_time": '',
+                    "notes": ai_greeting_instruction,
+                }
 
-            if lead_truck_rental_data:
-                transfer_result = await transfer_call(conversation_state['lead_id'], 2, conversation_state['site'], conversation_state['server'])
+                # 1️⃣ Send function output back to OpenAI (Follow Up saved because out of hours)
+                await openai_ws.send(json.dumps({
+                     "type": "conversation.item.create",
+                     "item": {
+                         "id": item_id,
+                         "type": "function_call_output",
+                         "call_id": call_id,
+                         "output": json.dumps(saved_output)
+                     }
+                 }))
+
+                # 2️⃣ Tell the model to speak confirmation
+                await openai_ws.send(json.dumps({
+                     "type": "response.create",
+                     "response": {
+                         "modalities": ["audio", "text"],
+                         "instructions": ai_greeting_instruction
+                     }
+                 }))
+
+                # schedule delayed disposition update (runs async in background)
+                asyncio.create_task(
+                    delayed_disposition_update(conversation_state['lead_id'], "No Buyer", follow_up_time)
+                )
             else:
-                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), follow_up_time)
+                ai_greeting_instruction = "Yes we have moving company avaliable"
+                transfer_result = await transfer_call(conversation_state['lead_id'], 2, conversation_state['site'], conversation_state['server'])
 
         elif args.get("disposition") == 'Agent Transfer':
             est = pytz.timezone("America/New_York")
@@ -1278,12 +1302,32 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 for key, call_type in pairs:
                     node = data.get(key)
                     if node and isinstance(node, dict):
+                        campaign_id = node.get("campaign_id") or node.get("campaign_id") or None
+                        campaign_payout = node.get("campaign_payout") or node.get("campaign_payout") or None
+                        campaign_score = node.get("campaign_score") or node.get("campaign_score") or None
                         name = node.get("mover_name") or node.get("name") or None
                         phone = node.get("mover_phone") or node.get("phone") or None
                         if not (name or phone):
                             print(f"[TRANSFER] Skipping {key} — no name/phone present")
                             continue
                         call_types_seen.add(call_type)
+                        normalized_phone = normalize_phone(phone) if phone else None
+                        if call_type == 1 and normalized_phone:
+                            try:
+                                conn2 = get_db_connection()
+                                if not conn2:
+                                    raise Exception("DB connection failed")
+                                cur2 = conn2.cursor()
+                                lead_id_val = int(ret_lead_id) if (ret_lead_id is not None and str(ret_lead_id).isdigit()) else (ret_lead_id or 0)
+                                cur2.execute("UPDATE leads SET mover = %s, mover_phone = %s, campaign_id = %s, campaign_payout = %s, campaign_score = %s WHERE lead_id = %s",
+                                             (name, normalized_phone, campaign_id, campaign_payout, campaign_score,lead_id_val))
+                                conn2.commit()
+                                cur2.close()
+                                conn2.close()
+                                print(f"[TRANSFER] Updated leads({lead_id_val}) mover and mover_phone")
+                            except Exception as e:
+                                print(f"[TRANSFER] Failed to update leads table: {e}")
+
                         contacts_to_insert.append({
                             "lead_id": int(ret_lead_id) if (ret_lead_id is not None and str(ret_lead_id).isdigit()) else (ret_lead_id or 0),
                             "calluuid": call_u_id or api_update_data.get('calluuid') or '',
