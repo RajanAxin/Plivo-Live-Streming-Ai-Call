@@ -1303,8 +1303,8 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                     node = data.get(key)
                     if node and isinstance(node, dict):
                         campaign_id = node.get("campaign_id") or node.get("campaign_id") or None
-                        campaign_payout = node.get("campaign_payout") or node.get("campaign_payout") or None
-                        campaign_score = node.get("campaign_score") or node.get("campaign_score") or None
+                        campaign_payout = node.get("mover_payout") or node.get("mover_payout") or None
+                        campaign_score = node.get("mover_score") or node.get("mover_score") or None
                         name = node.get("mover_name") or node.get("name") or None
                         phone = node.get("mover_phone") or node.get("phone") or None
                         if not (name or phone):
