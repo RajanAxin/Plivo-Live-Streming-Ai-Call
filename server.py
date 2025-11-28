@@ -1631,9 +1631,10 @@ async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
 
     if lead_data_result == '1':
         if brand_id == '2':
+            # dhprm  pmpt_69262d5672f4819399859365246218520c851a4afbab2899
             print("vm-outbound")
             prompt_obj = {
-                "id": "pmpt_69262d5672f4819399859365246218520c851a4afbab2899"
+                "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
             }
         else:
             print("outbound")
