@@ -1344,7 +1344,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                                 print(f"[TRANSFER] Updated leads({lead_id_val}) truck_mover and mover_phone")
                             except Exception as e:
                                 print(f"[TRANSFER] Failed to update leads table: {e}")
-
+                        
                         contacts_to_insert.append({
                             "lead_id": int(ret_lead_id) if (ret_lead_id is not None and str(ret_lead_id).isdigit()) else (ret_lead_id or 0),
                             "calluuid": call_u_id or api_update_data.get('calluuid') or '',
@@ -1356,27 +1356,27 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 if not contacts_to_insert:
                     print("[TRANSFER] No live_transfer/truck_rental data to save.")
 
-                    try:
-                        conn = get_db_connection()
-                        if not conn:
-                            raise Exception("Failed to get DB connection")
+                    # try:
+                    #     conn = get_db_connection()
+                    #     if not conn:
+                    #         raise Exception("Failed to get DB connection")
 
-                        cursor = conn.cursor(buffered=True)
+                    #     cursor = conn.cursor(buffered=True)
 
-                        delete_sql = """
-                            DELETE FROM lead_call_contact_details
-                            WHERE lead_id = %s
-                        """
+                    #     delete_sql = """
+                    #         DELETE FROM lead_call_contact_details
+                    #         WHERE lead_id = %s
+                    #     """
 
-                        print(f"[TRANSFER] Deleting existing contacts for lead_id={lead_id}")
-                        cursor.execute(delete_sql, (lead_id,))
+                    #     print(f"[TRANSFER] Deleting existing contacts for lead_id={lead_id}")
+                    #     cursor.execute(delete_sql, (lead_id,))
 
-                        conn.commit()
-                        cursor.close()
-                        print("[TRANSFER] Existing records deleted successfully.") 
-                    except Exception as e:
-                        print(f"[TRANSFER] Error while deleting records: {e}")
-                        return False
+                    #     conn.commit()
+                    #     cursor.close()
+                    #     print("[TRANSFER] Existing records deleted successfully.") 
+                    # except Exception as e:
+                    #     print(f"[TRANSFER] Error while deleting records: {e}")
+                    #     return False
                     return True
 
                 # Insert contacts into DB, deleting existing ones for this lead & call_types first (if lead_id provided)
