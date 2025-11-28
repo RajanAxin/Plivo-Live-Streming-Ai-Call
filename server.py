@@ -62,7 +62,6 @@ def segment_speakers(transcript_text: str):
 
         Possible dispositions are:
         - Not Connected
-        - Live Transfer
         - DNC
         - Not Interested
         - Follow Up
@@ -1623,9 +1622,32 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         query_string = urlencode(params, quote_via=quote)
         redirect_url = f"http://54.176.128.91/disposition_route?{query_string}"
         print(f"[DISPOSITION] Redirect URL: {redirect_url}")
+        # Send request
         response = requests.post(redirect_url)
-        print(f"[DEBUG] Redirect URL: {response}")
+        api_response_text = response.text if response.text else str(response)
+
         print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
+
+        # -------------------------------
+        # SAVE API CALL LOG IN DATABASE
+        # -------------------------------
+        conn = get_db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                insert_query = """
+                    INSERT INTO dispotion_api_call_logs (lead_id, api_url, api_response, dispotion)
+                    VALUES (%s, %s, %s, %s)
+                """
+                cursor.execute(insert_query, (lead_id, redirect_url, api_response_text, disposition_val))
+                conn.commit()
+                print(f"[LOG] API call stored for lead {lead_id}")
+            except Exception as db_error:
+                print(f"[DB ERROR] Failed to insert log: {db_error}")
+            finally:
+                cursor.close()
+                conn.close()
+
     except Exception as e:
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
