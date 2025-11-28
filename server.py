@@ -56,7 +56,6 @@ def segment_speakers(transcript_text: str):
             Split this transcript into two speakers: Agent and Customer.
             Keep the order of the conversation, and don't add extra text.
             Keep the correct back-and-forth flow. 
-            In the conversation last if you recived Hello only then consider Only Call.
             Transcript:
             {transcript_text}
             After splitting, analyze the conversation and return the final disposition in JSON.
@@ -76,7 +75,6 @@ def segment_speakers(transcript_text: str):
         - Booked with Truck Rental
         - Truck Rental
         - IB Pickup
-        - Only Call
         - No Answer
         - Business Relay
         Output format (JSON only):
@@ -1611,6 +1609,14 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
             }
 
         if disposition == 4:
+            print('followup time:',follow_up_time)
+            # dt = datetime.fromisoformat(follow_up_time)
+            # dt_utc = pytz.utc.localize(dt)
+            # est_time = dt_utc.astimezone(pytz.timezone("America/New_York"))
+            #print('converted followup time:',follow_up_time)
+            #est = pytz.timezone("America/New_York")
+            #est_time = datetime.now(est)
+            #current_hour = est_time.hour
             params["followupdatetime"] = follow_up_time
             print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         # Build the URL with proper encoding
