@@ -1329,6 +1329,21 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                                 print(f"[TRANSFER] Updated leads({lead_id_val}) mover and mover_phone")
                             except Exception as e:
                                 print(f"[TRANSFER] Failed to update leads table: {e}")
+                        elif call_type == 'truck_rental_transfer' and normalized_phone:
+                            try:
+                                conn2 = get_db_connection()
+                                if not conn2:
+                                    raise Exception("DB connection failed")
+                                cur2 = conn2.cursor()
+                                lead_id_val = int(ret_lead_id) if (ret_lead_id is not None and str(ret_lead_id).isdigit()) else (ret_lead_id or 0)
+                                cur2.execute("UPDATE leads SET campaign_id_truck = %s, campaign_payout_truck = %s, campaign_score_truck = %s WHERE lead_id = %s",
+                                             (campaign_id, campaign_payout, campaign_score,lead_id_val))
+                                conn2.commit()
+                                cur2.close()
+                                conn2.close()
+                                print(f"[TRANSFER] Updated leads({lead_id_val}) truck_mover and mover_phone")
+                            except Exception as e:
+                                print(f"[TRANSFER] Failed to update leads table: {e}")
 
                         contacts_to_insert.append({
                             "lead_id": int(ret_lead_id) if (ret_lead_id is not None and str(ret_lead_id).isdigit()) else (ret_lead_id or 0),
