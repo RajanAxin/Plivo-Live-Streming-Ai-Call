@@ -1609,14 +1609,14 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
 
         if disposition == 4:
             print('followup time:',follow_up_time)
-            # dt = datetime.fromisoformat(follow_up_time)
-            # dt_utc = pytz.utc.localize(dt)
-            # est_time = dt_utc.astimezone(pytz.timezone("America/New_York"))
-            #print('converted followup time:',follow_up_time)
+            dt = datetime.fromisoformat(follow_up_time)
+            dt_utc = pytz.utc.localize(dt)
+            est_time = dt_utc.astimezone(pytz.timezone("America/New_York"))
+            print('converted followup time:',follow_up_time)
             #est = pytz.timezone("America/New_York")
             #est_time = datetime.now(est)
             #current_hour = est_time.hour
-            params["followupdatetime"] = follow_up_time
+            params["followupdatetime"] = est_time
             print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         # Build the URL with proper encoding
         query_string = urlencode(params, quote_via=quote)
