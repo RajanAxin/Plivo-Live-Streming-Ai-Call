@@ -1287,7 +1287,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                     digits = re.sub(r"\D+", "", str(p))
                     return digits if digits else p
 
-                # collect contact entries (keys from your API are "live_transfer" and "truck_rental_transfer")
+                # collect contact entries (keys from your API are "live_transfer" and "truck_rental_transfer" and "call_forward_transfer")
                 contacts_to_insert = []
                 call_types_seen = set()
 
@@ -1295,6 +1295,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 pairs = (
                     ("live_transfer", "live_transfer"),
                     ("truck_rental_transfer", "truck_rental_transfer"),
+                    ("call_forward_transfer", "call_forward_transfer"),
                 )
 
                 for key, call_type in pairs:
@@ -1347,7 +1348,10 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                             "calluuid": call_u_id or api_update_data.get('calluuid') or '',
                             "call_type": call_type,
                             "name": name,
-                            "phone": normalize_phone(phone)
+                            "phone": normalize_phone(phone),
+                            "campaign_id": campaign_id,
+                            "campaign_payout": campaign_payout,
+                            "campaign_score": campaign_score,
                         })
 
                 if not contacts_to_insert:
