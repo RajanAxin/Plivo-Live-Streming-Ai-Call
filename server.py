@@ -1525,40 +1525,42 @@ async def transfer_call(lead_id,transfer_type,site,server):
 
 async def company_avaliability(lead_id, transfer_type):
     try:
-        print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
-
+        print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}, transfer_type: {transfer_type}")
         conn = get_db_connection()
         if not conn:
             raise Exception("Failed to get database connection")
 
         cursor = conn.cursor(dictionary=True, buffered=True)
 
-        # Initialize
         company_details = None
 
-        # Fetch phone based on transfer_type
         if transfer_type == 1:
+            # Live transfer
             cursor.execute(
-                "SELECT * FROM lead_call_contact_details "
-                "WHERE lead_id = %s AND call_type = 'live_transfer'",
-                (lead_id,)   # <-- FIXED COMMA
+                """
+                SELECT * FROM lead_call_contact_details
+                WHERE lead_id = %s AND call_type = 'live_transfer'
+                """,
+                (lead_id,)
             )
-            company_details = cursor.fetchone()
-
         elif transfer_type == 2:
+            # Truck rental transfer
             cursor.execute(
-                "SELECT * FROM lead_call_contact_details "
-                "WHERE lead_id = %s AND call_type = 'truck_rental_transfer'",
-                (lead_id,)   # <-- FIXED COMMA
+                """
+                SELECT * FROM lead_call_contact_details
+                WHERE lead_id = %s AND call_type = 'truck_rental_transfer'
+                """,
+                (lead_id,)
             )
-            company_details = cursor.fetchone()
+
+        company_details = cursor.fetchone()
+        print("[DEBUG] Fetched company_details:", company_details)
 
         cursor.close()
         conn.close()
 
-        # Return phone safely
         if company_details and company_details.get("phone"):
-            return company_details.get("phone")
+            return company_details["phone"]
         else:
             return None
 
