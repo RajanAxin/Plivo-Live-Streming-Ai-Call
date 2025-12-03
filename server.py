@@ -46,21 +46,36 @@ def transcribe(file_path):
         )
     return transcript.text
 
-def segment_speakers(transcript_text: str):
-    """Ask GPT to split transcript into Agent/Customer speakers"""
+
+def segment_speakers_new(transcript_text: str):
+    """Ask GPT to analyze entire transcript and return final disposition only."""
     response = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a call transcript formatter."},
-            {"role": "user", "content": f"""
-            Split this transcript into two speakers: Agent and Customer.
-            Keep the order of the conversation, and don't add extra text.
-            Keep the correct back-and-forth flow. 
-            Transcript:
-            {transcript_text}
-            After splitting, analyze the conversation and return the final disposition in JSON.
+            {"role": "system", "content": """You are a call disposition classifier for a moving company. Analyze the conversation and select the exact matching disposition based on these RULES:
 
-        Possible dispositions are:
+        1. "booked with you/your team/scheduled with you" → Booked with Us
+        2. "already booked/hired movers/scheduled elsewhere/we're set" → Booked  
+        3. "booked u-haul/penske/ryder/budget truck/rented truck" → Booked with Truck Rental
+        4. "booked pods/container/PODS/pack rat/1-800-packrat" → Booked with PODs
+        5. "not interested/don't need/not looking" → Not Interested
+        6. "wrong number/wrong person/not me/no idea" → Wrong Phone
+        7. "do not call/stop calling/remove me" → DNC
+        8. "no buyer available/buyer not available" → No Buyer
+        9. Human agent requested between 6PM-8AM EST → Next 8AM EST Followup
+        10. "call me back/call tomorrow/next week/next month" → Follow Up
+        11. "leave message/voicemail" → Voice Message
+        12. "no answer/didn't pick up/disconnected" → No Answer
+        13. "business line/company phone/office number" → Business Relay
+        14. Transfer initiated to mover/truck rental → Transfer Initiated
+        15. Call never connected → Not Connected
+        16. Normal moving conversation → Connected - Information Gathering
+
+        For time checks: If human agent is requested and current time is 6PM-8AM EST, use "Next 8AM EST Followup"
+        For booking types: Be specific about which company they booked with
+        For conversation state: If actively discussing moving details, use "Connected - Information Gathering"
+
+        Select ONLY ONE disposition from these options:
         - Not Connected
         - DNC
         - Not Interested
@@ -76,19 +91,95 @@ def segment_speakers(transcript_text: str):
         - IB Pickup
         - No Answer
         - Business Relay
-        Output format (JSON only):
-        {{
-            "conversation": [
-                    {{ "speaker": "Agent", "text": "..." }},
-                    {{ "speaker": "Customer", "text": "..." }}
-                ],
-                "disposition": "<one_of_the_above>"
-        }}
+        - Next 8AM EST Followup
+        - Transfer Initiated
+        - Connected - Information Gathering"""},
+            {"role": "user", "content": f"""
+            Analyze the following call transcript and determine the correct disposition.
+            Do NOT split into speakers. Use the entire transcript as-is.
+
+            TRANSCRIPT:
+            {transcript_text}
+
+            CONTEXT: This is a moving company conversation. The AI agent collects customer info and helps with moving questions. The AI follows these specific rules:
+            
+            1. If customer says "booked with you" → Booked with Us
+            2. If customer says "already booked" → Booked
+            3. If customer mentions specific truck rental company → Booked with Truck Rental
+            4. If customer mentions PODS/container → Booked with PODs
+            5. If wrong number → Wrong Phone
+            6. If human requested 6PM-8AM EST → Next 8AM EST Followup
+            7. If callback requested → Follow Up
+            8. If no buyer available → No Buyer
+            9. If actively discussing move → Connected - Information Gathering
+            10. If being transferred → Transfer Initiated
+            
+            CURRENT TIME CONTEXT: Assume EST timezone. If transcript mentions "human", "agent", "representative", or "customer service" request, check if it's between 6PM-8AM EST.
+            
+            IMPORTANT: Look for these EXACT phrases in the transcript:
+            - "booked with you", "with your team" → Booked with Us
+            - "booked already", "hired movers" → Booked
+            - "u-haul", "penske", "ryder" → Booked with Truck Rental
+            - "pods", "container", "pack rat" → Booked with PODs
+            - "wrong number", "not me" → Wrong Phone
+            - "do not call" → DNC
+            - "call me back" → Follow Up
+            - "no buyer" → No Buyer
+            
+            Output ONLY valid JSON in the following format:
+            {{
+                "disposition": "<one_of_the_above_dispositions>"
+            }}
+            
+            Select the MOST SPECIFIC match based on the exact phrases in the transcript.
             """}
         ],
-        response_format={"type": "json_object"}  # force valid JSON
+        response_format={"type": "json_object"}  # ensure valid JSON
     )
     return response.choices[0].message.content
+
+
+
+def segment_speakers(transcript_text: str):
+    """Ask GPT to analyze entire transcript and return final disposition only."""
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a call disposition classifier."},
+            {"role": "user", "content": f"""
+            Analyze the following call transcript and determine the correct disposition.
+            Do NOT split into speakers. Use the entire transcript as-is.
+
+            Transcript:
+            {transcript_text}
+
+            Possible dispositions:
+            - Not Connected
+            - DNC
+            - Not Interested
+            - Follow Up
+            - No Buyer
+            - Voice Message
+            - Wrong Phone
+            - Booked
+            - Booked with Us
+            - Booked with PODs
+            - Booked with Truck Rental
+            - Truck Rental
+            - IB Pickup
+            - No Answer
+            - Business Relay
+
+            Output ONLY valid JSON in the following format:
+            {{
+                "disposition": "<one_of_the_above>"
+            }}
+            """}
+        ],
+        response_format={"type": "json_object"}  # ensure valid JSON
+    )
+    return response.choices[0].message.content
+
 
 @app.get("/disposition_process")
 def disposition_process():
@@ -864,82 +955,35 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
 
     if args.get("disposition") is not None:
         if args.get("disposition") == 'Live Transfer':
-            check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 1)
-            print('asdasdasdasdasdasd',check_company_avaliabe)
-            if check_company_avaliabe == None:
-                ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
-                saved_output = {
-                    "status": "saved",
-                    "disposition": 'No Buyer',
-                    "customer_response": ai_greeting_instruction,
-                    "followup_time": '',
-                    "notes": ai_greeting_instruction,
-                }
-
-                # 1️⃣ Send function output back to OpenAI (Follow Up saved because out of hours)
-                await openai_ws.send(json.dumps({
-                     "type": "conversation.item.create",
-                     "item": {
-                         "id": item_id,
-                         "type": "function_call_output",
-                         "call_id": call_id,
-                         "output": json.dumps(saved_output)
-                     }
-                 }))
-
-                # 2️⃣ Tell the model to speak confirmation
-                await openai_ws.send(json.dumps({
-                     "type": "response.create",
-                     "response": {
-                         "modalities": ["audio", "text"],
-                         "instructions": ai_greeting_instruction
-                     }
-                 }))
-
-                # schedule delayed disposition update (runs async in background)
-                asyncio.create_task(
-                    delayed_disposition_update(conversation_state['lead_id'], "No Buyer", follow_up_time)
-                )
+            check_individual_company_avaliabe = await check_individual_company_avaliability(conversation_state['lead_id'], args.get("moving_company"))
+            if check_individual_company_avaliabe == None:
+                check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 1)
+                print('asdasdasdasdasdasd',check_company_avaliabe)
+                if check_company_avaliabe == None:
+                    check_call_forward_company_avaliabe = await call_forward_company_avaliability(conversation_state['lead_id'])
+                    if(check_call_forward_company_avaliabe == None):
+                        ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
+                        await ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,'No Buyer',ai_greeting_instruction,follow_up_time,1)
+                    else:
+                        print('list of move com-',check_call_forward_company_avaliabe)
+                        ai_greeting_instruction = f"We have the following moving companies available: {check_call_forward_company_avaliabe}. Please ask the user which company they want to talk to and after user choose a company call assign_customer_disposition function compalsory."
+                        ai_instruct = f"I have these moving companies available for you: {check_call_forward_company_avaliabe}. Which company would you like to connect with?"
+                        await ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,'Companies Found - Awaiting Choice', ai_instruct,follow_up_time,0)
+                else:
+                    ai_greeting_instruction = "Yes we have moving company avaliable"
+                    transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
             else:
-                ai_greeting_instruction = "Yes we have moving company avaliable"
-                transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
-
+                print('user selected company detail')
+                print(check_individual_company_avaliabe)
+                ai_greeting_instruction = "User successfully selected a call forward company now please make a call"
+                transfer_result = await call_forward_transfer_call(conversation_state['lead_id'], check_individual_company_avaliabe , conversation_state['site'], conversation_state['server'])
+                
         elif args.get("disposition") == 'Truck Rental':
             check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 2)
             if check_company_avaliabe == None:
                 ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
-                saved_output = {
-                    "status": "saved",
-                    "disposition": 'No Buyer',
-                    "customer_response": ai_greeting_instruction,
-                    "followup_time": '',
-                    "notes": ai_greeting_instruction,
-                }
-
-                # 1️⃣ Send function output back to OpenAI (Follow Up saved because out of hours)
-                await openai_ws.send(json.dumps({
-                     "type": "conversation.item.create",
-                     "item": {
-                         "id": item_id,
-                         "type": "function_call_output",
-                         "call_id": call_id,
-                         "output": json.dumps(saved_output)
-                     }
-                 }))
-
-                # 2️⃣ Tell the model to speak confirmation
-                await openai_ws.send(json.dumps({
-                     "type": "response.create",
-                     "response": {
-                         "modalities": ["audio", "text"],
-                         "instructions": ai_greeting_instruction
-                     }
-                 }))
-
-                # schedule delayed disposition update (runs async in background)
-                asyncio.create_task(
-                    delayed_disposition_update(conversation_state['lead_id'], "No Buyer", follow_up_time)
-                )
+                ai_instruct = f"This buyer not available at this moment and no other buyer available"
+                await ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,'No Buyer', ai_instruct,follow_up_time,1)
             else:
                 ai_greeting_instruction = "Yes we have moving company avaliable"
                 transfer_result = await transfer_call(conversation_state['lead_id'], 2, conversation_state['site'], conversation_state['server'])
@@ -1540,8 +1584,8 @@ async def company_avaliability(lead_id, transfer_type):
             cursor.execute(
                 """
                 SELECT * FROM lead_call_contact_details
-                WHERE lead_id = %s
-                AND call_type IN ('live_transfer', 'live_trasnfer')
+                WHERE lead_id = %s AND
+                call_type IN ('live_transfer', 'live_trasnfer')
                 """,
                 (lead_id,)
             )
@@ -1570,7 +1614,158 @@ async def company_avaliability(lead_id, transfer_type):
         print(f"[TRANSFER ERROR] {e}")
         return None
 
+
+async def check_individual_company_avaliability(lead_id,company_name):
+    try:
+        print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+        conn = get_db_connection()
+        if not conn:
+            raise Exception("Failed to get database connection")
+
+        cursor = conn.cursor(dictionary=True, buffered=True)
+
+        company_details = None
+
+        cursor.execute(
+            """
+            SELECT * FROM lead_call_contact_details
+            WHERE lead_id = %s AND
+            call_type = 'call_forward_trasnfer' AND name = %s
+            """,
+            (lead_id,company_name)
+        )
+
+        company_details = cursor.fetchone()
+        print("[DEBUG] Fetched company_details:", company_details)
+
+        cursor.close()
+        conn.close()
+
+        if company_details and company_details.get("phone"):
+            return company_details
+        else:
+            return None
+
+    except Exception as e:
+        print(f"[TRANSFER ERROR] {e}")
+        return None
+
+
+async def call_forward_transfer_call(lead_id, company_details, site, server):
+    try:
+        print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+        print(f"[TRANSFER] company_details: {company_details}")
+        print(f"[TRANSFER] site: {site}")
+        print(f"[TRANSFER] server: {server}")
         
+        # Database connection and query
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.cursor(dictionary=True, buffered=True)
+            cursor.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
+            lead_data = cursor.fetchone()
+            cursor.close()
+            conn.close()
+        else:
+            raise Exception("Failed to get database connection")
+            
+        if not lead_data:
+            raise Exception(f"Lead not found for lead_id: {lead_id}")
+
+        # Prepare payload
+        payload = {
+            'id': lead_data.get('t_call_id'),
+            'action': 1,
+            'usaBusinessCheck': 0,
+            'type': 1,
+            'review_call': lead_data.get('review_call', 0),  # defaults to 0 if None or missing
+            'accept_call': 0,
+            'rep_id': lead_data.get('t_rep_id'),
+            'logic_check': 1,
+            'lead_id': lead_data.get('t_lead_id'),
+            'categoryId': 1,
+            'buffer_id_arr': '',
+            'campaignId': company_details.get('campaign_id'),
+            'campaignScore': company_details.get('campaign_score'),
+            'campaignNumber': company_details.get('phone'),
+            'campaignPayout': company_details.get('campaign_payout')
+        }
+        
+        print(f"[TRANSFER] Payload: {json.dumps(payload, indent=2)}")
+
+        # Determine URL based on site and server
+        if site == "ZAP":
+            if server == "Prod":
+                url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+            else:
+                url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
+        else:
+            if server == "Prod":
+                url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+            else:
+                url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+        
+        print(f"[TRANSFER] Using URL: {url}")
+        
+        # Make the API call
+        async with aiohttp.ClientSession() as session:
+            # ✅ Add delay before making API call
+            await asyncio.sleep(2)
+            
+            async with session.post(
+                url,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(payload)
+            ) as resp:
+                if resp.status == 200:
+                    response_text = await resp.text()
+                    print(f"[TRANSFER] API call successful: {response_text}")
+                    return response_text
+                else:
+                    response_text = await resp.text()
+                    raise Exception(f"API call failed with status {resp.status}: {response_text}")
+        
+    except Exception as e:
+        print(f"[TRANSFER ERROR] {e}")
+        return None
+
+async def call_forward_company_avaliability(lead_id):
+    try:
+        print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+        conn = get_db_connection()
+        if not conn:
+            raise Exception("Failed to get database connection")
+
+        cursor = conn.cursor(dictionary=True, buffered=True)
+
+        cursor.execute(
+            """
+            SELECT 
+                GROUP_CONCAT(DISTINCT name SEPARATOR ', ') as company_names
+            FROM lead_call_contact_details
+            WHERE lead_id = %s 
+                AND call_type = 'call_forward_trasnfer' 
+                AND name IS NOT NULL 
+                AND name != ''
+            GROUP BY lead_id
+            """,
+            (lead_id,)
+        )
+
+        result = cursor.fetchone()
+        print("[DEBUG] Fetched company names:", result)
+
+        cursor.close()
+        conn.close()
+
+        if result and result.get("company_names"):
+            return result["company_names"]
+        else:
+            return None
+
+    except Exception as e:
+        print(f"[TRANSFER ERROR] {e}")
+        return None        
 
 async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
     try:
@@ -1660,6 +1855,40 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
 
+async def ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,instructions,dispotion,follow_up_time,stype):
+    saved_output = {
+        "status": "saved",
+        "disposition": dispotion,
+        "customer_response": ai_greeting_instruction,
+        "followup_time": "",
+        "notes": ai_greeting_instruction,
+    }
+
+    # 1️⃣ Send function output back to OpenAI (Follow Up saved because out of hours)
+    await openai_ws.send(json.dumps({
+         "type": "conversation.item.create",
+         "item": {
+             "id": item_id,
+             "type": "function_call_output",
+             "call_id": call_id,
+             "output": json.dumps(saved_output)
+         }
+     }))
+
+    # 2️⃣ Tell the model to speak confirmation
+    await openai_ws.send(json.dumps({
+         "type": "response.create",
+         "response": {
+             "modalities": ["audio", "text"],
+             "instructions": instructions
+         }
+     }))
+
+    if stype == 1:
+        # schedule delayed disposition update (runs async in background)
+        asyncio.create_task(
+            delayed_disposition_update(conversation_state['lead_id'], dispotion, follow_up_time)
+        )
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
