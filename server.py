@@ -1676,7 +1676,7 @@ async def call_forward_transfer_call(lead_id, company_details, site, server):
         payload = {
             'id': lead_data.get('t_call_id'),
             'action': 1,
-            'usaBusinessCheck': 0,
+            'usaBusinessCheck': 2,
             'type': 1,
             'review_call': lead_data.get('review_call', 0),  # defaults to 0 if None or missing
             'accept_call': 0,
