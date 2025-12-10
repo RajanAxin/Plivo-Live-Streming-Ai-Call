@@ -166,9 +166,7 @@ def segment_speakers(transcript_text: str):
             - Booked with PODs
             - Booked with Truck Rental
             - Truck Rental
-            - IB Pickup
             - No Answer
-            - Business Relay
 
             Output ONLY valid JSON in the following format:
             {{
