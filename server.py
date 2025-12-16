@@ -944,59 +944,339 @@ async def delayed_disposition_update(lead_id, disposition, follow_up_time):
         print(f"[DELAYED_DISPOSITION] Error updating disposition: {e}")
 
 
+async def log_call_action(lead_id, action_type, status, details, conversation_state=None, args=None):
+    """
+    Log actions to database using your exact pattern
+    
+    Parameters:
+    - lead_id: The lead identifier
+    - action_type: Type of action (e.g., 'DISPOSITION_UPDATE', 'TRANSFER_ATTEMPT')
+    - status: Status of action (e.g., 'SUCCESS', 'FAILURE', 'INFO', 'WARNING')
+    - details: Detailed information about the action
+    - conversation_state: Optional conversation state for context
+    - args: Optional function arguments for context
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            
+            # Prepare JSON data as strings
+            conversation_data_str = json.dumps(conversation_state, default=str) if conversation_state else None
+            function_args_str = json.dumps(args, default=str) if args else None
+            timestamp = datetime.now().isoformat()
+            
+            insert_query = """
+                INSERT INTO call_logs 
+                (lead_id, action_type, status, details, timestamp, conversation_data, function_args)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            cursor.execute(
+                insert_query, 
+                (lead_id, action_type, status, details, timestamp, conversation_data_str, function_args_str)
+            )
+            conn.commit()
+            
+            # Optional: Log to console for debugging
+            print(f"[LOG] Action logged for lead {lead_id}: {action_type} - {status}")
+            
+        except Exception as db_error:
+            print(f"[DB ERROR] Failed to insert log for lead {lead_id}: {db_error}")
+        finally:
+            cursor.close()
+            conn.close()
+    else:
+        print(f"[LOG ERROR] No database connection for lead {lead_id}")
+        
+        
 async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Saving Disposition ===")
     print(args)
     ai_greeting_instruction = ''
     transfer_result = None
     follow_up_time = args.get("followup_time")
+    
+    # Log start of disposition assignment
+    await log_call_action(
+        conversation_state['lead_id'],
+        'DISPOSITION_ASSIGNMENT_START',
+        'INFO',
+        f"Starting disposition assignment with args: {args}",
+        conversation_state,
+        args
+    )
 
     if args.get("disposition") is not None:
-        if args.get("disposition") == 'Live Transfer':
-            check_individual_company_avaliabe = await check_individual_company_avaliability(conversation_state['lead_id'], args.get("moving_company"))
+        disposition = args.get("disposition")
+        
+        # Log disposition selection
+        await log_call_action(
+            conversation_state['lead_id'],
+            'DISPOSITION_SELECTED',
+            'INFO',
+            f"User selected disposition: {disposition}",
+            conversation_state
+        )
+
+        if disposition == 'Live Transfer':
+            # Log start of live transfer process
+            await log_call_action(
+                conversation_state['lead_id'],
+                'LIVE_TRANSFER_START',
+                'INFO',
+                f"Starting live transfer process. Company preference: {args.get('moving_company')}",
+                conversation_state
+            )
+            
+            check_individual_company_avaliabe = await check_individual_company_avaliability(
+                conversation_state['lead_id'], 
+                args.get("moving_company")
+            )
+            
+            # Log individual company check result
+            await log_call_action(
+                conversation_state['lead_id'],
+                'INDIVIDUAL_COMPANY_CHECK',
+                'INFO' if check_individual_company_avaliabe else 'WARNING',
+                f"Individual company availability check result: {check_individual_company_avaliabe}",
+                conversation_state
+            )
+            
             if check_individual_company_avaliabe == None:
                 check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 1)
+                
+                # Log general company availability check
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'COMPANY_AVAILABILITY_CHECK',
+                    'INFO' if check_company_avaliabe else 'WARNING',
+                    f"General company availability (type 1) result: {check_company_avaliabe}",
+                    conversation_state
+                )
+                
                 print('asdasdasdasdasdasd',check_company_avaliabe)
                 if check_company_avaliabe == None:
                     check_call_forward_company_avaliabe = await call_forward_company_avaliability(conversation_state['lead_id'])
+                    
+                    # Log call forward company availability check
+                    await log_call_action(
+                        conversation_state['lead_id'],
+                        'CALL_FORWARD_COMPANY_CHECK',
+                        'INFO' if check_call_forward_company_avaliabe else 'WARNING',
+                        f"Call forward companies available: {check_call_forward_company_avaliabe}",
+                        conversation_state
+                    )
+                    
                     if(check_call_forward_company_avaliabe == None):
                         ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
-                        await ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,'No Buyer',ai_greeting_instruction,follow_up_time,1)
+                        
+                        # Log no buyers available
+                        await log_call_action(
+                            conversation_state['lead_id'],
+                            'NO_BUYERS_AVAILABLE',
+                            'WARNING',
+                            "No moving companies available for live transfer",
+                            conversation_state
+                        )
+                        
+                        await ai_instract_guid(
+                            openai_ws, ai_greeting_instruction, item_id, 
+                            call_id, conversation_state, 'No Buyer', 
+                            ai_greeting_instruction, follow_up_time, 1
+                        )
                     else:
                         print('list of move com-',check_call_forward_company_avaliabe)
                         ai_greeting_instruction = f"We have the following moving companies available: {check_call_forward_company_avaliabe}. Please ask the user which company they want to talk to and after user choose a company call assign_customer_disposition function compalsory."
                         ai_instruct = f"I have these moving companies available for you: {check_call_forward_company_avaliabe}. Which company would you like to connect with?"
-                        await ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,'Companies Found - Awaiting Choice', ai_instruct,follow_up_time,0)
+                        
+                        # Log companies found, awaiting user choice
+                        await log_call_action(
+                            conversation_state['lead_id'],
+                            'COMPANIES_FOUND_AWAITING_CHOICE',
+                            'INFO',
+                            f"Companies available for user choice: {check_call_forward_company_avaliabe}",
+                            conversation_state
+                        )
+                        
+                        await ai_instract_guid(
+                            openai_ws, ai_greeting_instruction, item_id, call_id, 
+                            conversation_state, 'Companies Found - Awaiting Choice', 
+                            ai_instruct, follow_up_time, 0
+                        )
                 else:
                     ai_greeting_instruction = "Yes we have moving company avaliable"
-                    transfer_result = await transfer_call(conversation_state['lead_id'], 1, conversation_state['site'], conversation_state['server'])
+                    
+                    # Log company available for transfer
+                    await log_call_action(
+                        conversation_state['lead_id'],
+                        'COMPANY_AVAILABLE_FOR_TRANSFER',
+                        'INFO',
+                        f"Company available for transfer: {check_company_avaliabe}",
+                        conversation_state
+                    )
+                    
+                    transfer_result = await transfer_call(
+                        conversation_state['lead_id'], 1, 
+                        conversation_state['site'], conversation_state['server']
+                    )
+                    
+                    # Log transfer initiation
+                    await log_call_action(
+                        conversation_state['lead_id'],
+                        'TRANSFER_INITIATED',
+                        'INFO',
+                        "Transfer call initiated for company type 1",
+                        conversation_state
+                    )
             else:
                 print('user selected company detail')
                 print(check_individual_company_avaliabe)
                 ai_greeting_instruction = "User successfully selected a call forward company now please make a call"
-                transfer_result = await call_forward_transfer_call(conversation_state['lead_id'], check_individual_company_avaliabe , conversation_state['site'], conversation_state['server'])
                 
-        elif args.get("disposition") == 'Truck Rental':
+                # Log user selected specific company
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'USER_SELECTED_COMPANY',
+                    'INFO',
+                    f"User selected specific company: {check_individual_company_avaliabe}",
+                    conversation_state
+                )
+                
+                transfer_result = await call_forward_transfer_call(
+                    conversation_state['lead_id'], check_individual_company_avaliabe, 
+                    conversation_state['site'], conversation_state['server']
+                )
+                
+                # Log call forward transfer initiation
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'CALL_FORWARD_TRANSFER_INITIATED',
+                    'INFO',
+                    f"Call forward transfer initiated to company: {check_individual_company_avaliabe}",
+                    conversation_state
+                )
+                
+        elif disposition == 'Truck Rental':
+            # Log start of truck rental process
+            await log_call_action(
+                conversation_state['lead_id'],
+                'TRUCK_RENTAL_START',
+                'INFO',
+                "Starting truck rental disposition process",
+                conversation_state
+            )
+            
             check_company_avaliabe = await company_avaliability(conversation_state['lead_id'], 2)
+            
+            # Log truck rental company availability
+            await log_call_action(
+                conversation_state['lead_id'],
+                'TRUCK_COMPANY_AVAILABILITY_CHECK',
+                'INFO' if check_company_avaliabe else 'WARNING',
+                f"Truck rental company availability result: {check_company_avaliabe}",
+                conversation_state
+            )
+            
             if check_company_avaliabe == None:
                 ai_greeting_instruction = "This buyer not available at this moment and no other buyer available"
                 ai_instruct = f"This buyer not available at this moment and no other buyer available"
-                await ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,'No Buyer', ai_instruct,follow_up_time,1)
+                
+                # Log no truck rental companies available
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'NO_TRUCK_RENTAL_COMPANIES',
+                    'WARNING',
+                    "No truck rental companies available",
+                    conversation_state
+                )
+                
+                await ai_instract_guid(
+                    openai_ws, ai_greeting_instruction, item_id, call_id, 
+                    conversation_state, 'No Buyer', ai_instruct, follow_up_time, 1
+                )
             else:
                 ai_greeting_instruction = "Yes we have moving company avaliable"
-                transfer_result = await transfer_call(conversation_state['lead_id'], 2, conversation_state['site'], conversation_state['server'])
+                
+                # Log truck rental company available
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'TRUCK_COMPANY_AVAILABLE',
+                    'INFO',
+                    f"Truck rental company available: {check_company_avaliabe}",
+                    conversation_state
+                )
+                
+                transfer_result = await transfer_call(
+                    conversation_state['lead_id'], 2, 
+                    conversation_state['site'], conversation_state['server']
+                )
+                
+                # Log truck rental transfer initiated
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'TRUCK_TRANSFER_INITIATED',
+                    'INFO',
+                    "Truck rental transfer initiated",
+                    conversation_state
+                )
 
-        elif args.get("disposition") == 'Agent Transfer':
+        elif disposition == 'Agent Transfer':
+            # Log start of agent transfer process
+            await log_call_action(
+                conversation_state['lead_id'],
+                'AGENT_TRANSFER_START',
+                'INFO',
+                "Starting agent transfer disposition",
+                conversation_state
+            )
+            
             est = pytz.timezone("America/New_York")
             est_time = datetime.now(est)
             current_hour = est_time.hour
+            
+            # Log business hours check
+            await log_call_action(
+                conversation_state['lead_id'],
+                'BUSINESS_HOURS_CHECK',
+                'INFO',
+                f"Current hour in EST: {current_hour}",
+                conversation_state
+            )
+            
             if 8 <= current_hour < 18:
                 print("YES: Time is between 8 AM and 6 PM")
-                await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), follow_up_time)
+                
+                # Log within business hours
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'WITHIN_BUSINESS_HOURS',
+                    'INFO',
+                    "Within business hours, proceeding with agent transfer",
+                    conversation_state
+                )
+                
+                await dispostion_status_update(
+                    conversation_state['lead_id'], 
+                    disposition, 
+                    follow_up_time
+                )
             else:
                 print("NO: Time is outside 8 AM - 6 PM")
-                next_run_time = (est_time + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+                next_run_time = (est_time + timedelta(days=1)).replace(
+                    hour=8, minute=0, second=0, microsecond=0
+                )
                 ai_greeting_instruction = "I've saved the Follow Up disposition. because it's outside of business hours"
+                
+                # Log outside business hours
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'OUTSIDE_BUSINESS_HOURS',
+                    'INFO',
+                    f"Outside business hours. Current: {current_hour}:00 EST. Scheduled for: {next_run_time}",
+                    conversation_state
+                )
+                
                 saved_output = {
                     "status": "saved",
                     "disposition": 'Follow Up',
@@ -1005,7 +1285,7 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
                     "notes": ai_greeting_instruction,
                 }
 
-                # 1️⃣ Send function output back to OpenAI (Follow Up saved because out of hours)
+                # 1️⃣ Send function output back to OpenAI
                 await openai_ws.send(json.dumps({
                      "type": "conversation.item.create",
                      "item": {
@@ -1025,15 +1305,51 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
                      }
                  }))
 
-                # schedule delayed disposition update (runs async in background)
-                asyncio.create_task(
-                    delayed_disposition_update(conversation_state['lead_id'], "Follow Up", next_run_time)
+                # Log delayed disposition scheduling
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'DELAYED_DISPOSITION_SCHEDULED',
+                    'INFO',
+                    f"Disposition scheduled for: {next_run_time}",
+                    conversation_state
                 )
-                # exit early because we've already sent the response to OpenAI for this branch
+                
+                # schedule delayed disposition update
+                asyncio.create_task(
+                    delayed_disposition_update(
+                        conversation_state['lead_id'], 
+                        "Follow Up", 
+                        next_run_time
+                    )
+                )
+                
+                # Log end of agent transfer process
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'AGENT_TRANSFER_COMPLETE',
+                    'INFO',
+                    "Agent transfer process completed (delayed due to business hours)",
+                    conversation_state
+                )
+                
                 return
 
         else:
-            await dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), follow_up_time)
+            # Log other disposition types
+            await log_call_action(
+                conversation_state['lead_id'],
+                'OTHER_DISPOSITION_UPDATE',
+                'INFO',
+                f"Updating disposition to: {disposition} with follow-up: {follow_up_time}",
+                conversation_state
+            )
+            
+            await dispostion_status_update(
+                conversation_state['lead_id'], 
+                disposition, 
+                follow_up_time
+            )
+            
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
 
     # ----- Handle transfer_result if present -----
@@ -1043,6 +1359,16 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
 
     if transfer_result:
         parsed_transfer = ensure_dict(transfer_result)
+        
+        # Log raw transfer result
+        await log_call_action(
+            conversation_state['lead_id'],
+            'TRANSFER_RESULT_RAW',
+            'INFO',
+            f"Raw transfer result: {parsed_transfer}",
+            conversation_state
+        )
+        
         print('tresult', parsed_transfer)
         try:
             status = parsed_transfer.get("status")
@@ -1050,11 +1376,44 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
             print('status', status)
             if status == "FAILURE":
                 transfer_failed = True
-                await dispostion_status_update(conversation_state['lead_id'], "No Buyer",follow_up_time)
-                ai_greeting_instruction = transfer_error_message  # make model speak the error
+                
+                # Log transfer failure
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'TRANSFER_FAILURE',
+                    'ERROR',
+                    f"Transfer failed with error: {transfer_error_message}",
+                    conversation_state
+                )
+                
+                await dispostion_status_update(
+                    conversation_state['lead_id'], 
+                    "No Buyer",
+                    follow_up_time
+                )
+                
+                ai_greeting_instruction = transfer_error_message
+            else:
+                # Log transfer success
+                await log_call_action(
+                    conversation_state['lead_id'],
+                    'TRANSFER_SUCCESS',
+                    'SUCCESS',
+                    f"Transfer successful. Result: {parsed_transfer}",
+                    conversation_state
+                )
         except Exception as e:
             print("Transfer result parsing error:", e)
-            # keep going; don't crash — but set a generic message
+            
+            # Log parsing error
+            await log_call_action(
+                conversation_state['lead_id'],
+                'TRANSFER_PARSE_ERROR',
+                'ERROR',
+                f"Error parsing transfer result: {e}",
+                conversation_state
+            )
+            
             transfer_failed = True
             transfer_error_message = "Transfer failed (parse error)."
             ai_greeting_instruction = transfer_error_message
@@ -1068,9 +1427,18 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
             "customer_response": transfer_error_message,
             "followup_time": args.get("followup_time"),
             "notes": transfer_error_message,
-            "transfer_result": parsed_transfer,   # full parsed transfer result for debugging/record
+            "transfer_result": parsed_transfer,
             "api_error": transfer_error_message,
         }
+        
+        # Log failed output structure
+        await log_call_action(
+            conversation_state['lead_id'],
+            'FAILED_OUTPUT_CREATED',
+            'INFO',
+            f"Created failed output structure for OpenAI",
+            conversation_state
+        )
     else:
         # normal saved output (no transfer failure)
         saved_output = {
@@ -1080,6 +1448,15 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
             "followup_time": args.get("followup_time"),
             "notes": args.get("notes"),
         }
+        
+        # Log successful output structure
+        await log_call_action(
+            conversation_state['lead_id'],
+            'SUCCESS_OUTPUT_CREATED',
+            'INFO',
+            f"Created successful output structure for OpenAI",
+            conversation_state
+        )
 
     # 1️⃣ Send function output back to OpenAI
     await openai_ws.send(json.dumps({
@@ -1091,8 +1468,17 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
             "output": json.dumps(saved_output)
         }
     }))
+    
+    # Log OpenAI response sent
+    await log_call_action(
+        conversation_state['lead_id'],
+        'OPENAI_RESPONSE_SENT',
+        'INFO',
+        f"Sent response to OpenAI with item_id: {item_id}",
+        conversation_state
+    )
 
-    # 2️⃣ Tell the model to speak confirmation / error (audio + text)
+    # 2️⃣ Tell the model to speak confirmation / error
     await openai_ws.send(json.dumps({
         "type": "response.create",
         "response": {
@@ -1100,6 +1486,24 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
             "instructions": ai_greeting_instruction
         }
     }))
+    
+    # Log audio response instruction
+    await log_call_action(
+        conversation_state['lead_id'],
+        'AUDIO_RESPONSE_INSTRUCTED',
+        'INFO',
+        f"Audio response instruction: {ai_greeting_instruction[:100]}...",
+        conversation_state
+    )
+    
+    # Log completion of disposition assignment
+    await log_call_action(
+        conversation_state['lead_id'],
+        'DISPOSITION_ASSIGNMENT_COMPLETE',
+        'INFO',
+        f"Completed disposition assignment. Final instruction: {ai_greeting_instruction[:100]}...",
+        conversation_state
+    )
 
 
 async def lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state):
