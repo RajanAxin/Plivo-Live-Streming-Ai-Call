@@ -624,8 +624,8 @@ async def monitor_silence(plivo_ws, conversation_state):
                 print(f"[SILENCE DETECTOR] Silence detected for {int(silence_duration)} seconds. Hanging up call {conversation_state.get('call_uuid')}.")
                 try:
                     # Send hangup command to Plivo
-                    await dispostion_status_update(conversation_state['lead_id'], "Voicemail", "")
-                    #await plivo_ws.send(json.dumps({"event": "hangup"}))
+                    #await dispostion_status_update(conversation_state['lead_id'], "Voicemail", "")
+                    await plivo_ws.send(json.dumps({"event": "hangup"}))
                 except Exception as e:
                     print(f"[SILENCE DETECTOR] Error sending hangup: {e}")
                 break  # Stop the detector loop
