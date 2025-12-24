@@ -604,6 +604,36 @@ async def test():
     return "OK"
 
 # ===============================================================
+# SILENCE DETECTOR FUNCTION
+# ===============================================================
+async def monitor_silence(plivo_ws, conversation_state):
+    """Monitors the conversation for silence and disconnects after 1 minute."""
+    try:
+        while True:
+            # Check every 5 seconds to save resources
+            await asyncio.sleep(5)
+            # Get current time and last activity time from state
+            now = asyncio.get_event_loop().time()
+            last_activity = conversation_state.get('last_activity_time', 0)
+            
+            # Calculate seconds of silence
+            silence_duration = now - last_activity
+
+            # If silence exceeds 120 seconds, hang up
+            if silence_duration > 120:
+                print(f"[SILENCE DETECTOR] Silence detected for {int(silence_duration)} seconds. Hanging up call {conversation_state.get('call_uuid')}.")
+                try:
+                    # Send hangup command to Plivo
+                    await dispostion_status_update(conversation_state['lead_id'], "Voicemail", "")
+                    #await plivo_ws.send(json.dumps({"event": "hangup"}))
+                except Exception as e:
+                    print(f"[SILENCE DETECTOR] Error sending hangup: {e}")
+                break  # Stop the detector loop
+    except asyncio.CancelledError:
+        print("[SILENCE DETECTOR] Task cancelled.")
+
+
+# ===============================================================
 # MAIN MEDIA STREAM HANDLER
 # ===============================================================
 @app.websocket('/media-stream')
@@ -652,7 +682,8 @@ async def handle_message():
         'pending_language_reminder': False,  # Flag to send language reminder after current response
         'ai_transcript': '',
         'session_ready': False,
-        '_audio_queue': [],  # if you queue audio until session is ready
+        '_audio_queue': [],  # if you queue audio until session is ready,
+        'last_activity_time': asyncio.get_event_loop().time(),  # Track last activity time
     }
 
 
@@ -730,12 +761,28 @@ async def handle_message():
             # Wait for 'response.created' event from server to set the flag.
             await openai_ws.send(json.dumps(initial_prompt))
 
+            # Initialize last activity time
+            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
+
+            # Helper to consume OpenAI messages as a coroutine for gathering
+            async def consume_openai_messages():
+                async for message in openai_ws:
+                    await receive_from_openai(message, plivo_ws, openai_ws, conversation_state)
+
+            # Create tasks for Plivo receiving, OpenAI consuming, and Silence monitoring
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
+            openai_task = asyncio.create_task(consume_openai_messages())
+            silence_task = asyncio.create_task(monitor_silence(plivo_ws, conversation_state))
 
-            async for message in openai_ws:
-                await receive_from_openai(message, plivo_ws, openai_ws, conversation_state)
+            # Run all tasks together. If one fails (e.g. hangup), handle it.
+            done, pending = await asyncio.wait(
+                [receive_task, openai_task, silence_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
 
-            await receive_task
+            # Cancel remaining tasks if one finishes (e.g. silence detector hangs up)
+            for task in pending:
+                task.cancel()
 
     except asyncio.CancelledError:
         print('client disconnected')
@@ -838,6 +885,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         # AI audio frames (play audio to Plivo)
         # ------------------------
         elif evt_type == "response.audio.delta":
+            # UPDATE: Reset timer when AI is speaking
+            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
             # some responses use 'delta' (base64); make sure to handle accordingly
             delta_b64 = response.get("delta") or response.get("audio") or ""
             if delta_b64:
@@ -904,6 +953,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         # ------------------------
         elif evt_type == "input_audio_buffer.speech_started":
             print("Speech started → cancel response")
+            # UPDATE: Reset timer on user speech
+            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
             try:
                 await plivo_ws.send(json.dumps({
                     "event": "clearAudio",
