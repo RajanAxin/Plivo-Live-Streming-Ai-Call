@@ -128,7 +128,8 @@ def segment_speakers_new(transcript_text: str):
             
             Output ONLY valid JSON in the following format:
             {{
-                "disposition": "<one_of_the_above_dispositions>"
+                "disposition": "<one_of_the_above_dispositions>",
+                "transcript_text": "{transcript_text}"
             }}
             
             Select the MOST SPECIFIC match based on the exact phrases in the transcript.
@@ -170,7 +171,8 @@ def segment_speakers(transcript_text: str):
 
             Output ONLY valid JSON in the following format:
             {{
-                "disposition": "<one_of_the_above>"
+                "disposition": "<one_of_the_above>",
+                "transcript_text": "{transcript_text}"
             }}
             """}
         ],
