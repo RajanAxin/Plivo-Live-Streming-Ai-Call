@@ -719,6 +719,8 @@ async def handle_message():
                                             prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
                                         else:
                                             prompt_text = prompt_text.replace(placeholder, str(value))  # fallback
+                                    elif key == "lead_status" and value:
+                                        prompt_text = prompt_text.replace("[lead_status]", str(value))
                                     else:
                                         prompt_text = prompt_text.replace(placeholder, str(value))
                         except (ValueError, TypeError):
@@ -932,6 +934,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             print(f"Successfully stored function response for lead_id: {conversation_state['lead_id']}")
             if fn == "assign_customer_disposition":
                 await handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state)
+            elif fn == "set_call_disposition":
+                await handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "update_lead":
                 await update_or_add_lead_details(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "lookup_zip_options":
@@ -1559,6 +1563,87 @@ async def handle_assign_disposition(openai_ws, args, item_id, call_id, conversat
     )
 
 
+async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id, conversation_state):
+    print("\n=== Saving Disposition ===")
+    print(args)
+    ai_greeting_instruction = ''
+    transfer_result = None
+    follow_up_time = args.get("followup_time")
+
+    if args.get("disposition") is not None:
+        if args.get("disposition") == 'Live Transfer':
+                ai_greeting_instruction = "Yes we have moving company avaliable"
+                transfer_result = await transfer_ma_lead_call(conversation_state['lead_id'], 1, conversation_state['t_lead_id'], conversation_state['lead_phone'], conversation_state['site'], conversation_state['server'])
+        else:
+            await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), conversation_state['t_lead_id'], conversation_state['lead_phone'], follow_up_time)
+            ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
+
+    # ----- Handle transfer_result if present -----
+    parsed_transfer = None
+    transfer_failed = False
+    transfer_error_message = None
+
+    if transfer_result:
+        parsed_transfer = ensure_dict(transfer_result)
+        print('tresult', parsed_transfer)
+        try:
+            status = parsed_transfer.get("status")
+            transfer_error_message = parsed_transfer.get("error") or parsed_transfer.get("data") or "Transfer failed."
+            print('status', status)
+            if status == "FAILURE":
+                transfer_failed = True
+                await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], "No Buyer", conversation_state['t_lead_id'], conversation_state['lead_phone'], follow_up_time)
+                ai_greeting_instruction = transfer_error_message  # make model speak the error
+        except Exception as e:
+            print("Transfer result parsing error:", e)
+            # keep going; don't crash — but set a generic message
+            transfer_failed = True
+            transfer_error_message = "Transfer failed (parse error)."
+            ai_greeting_instruction = transfer_error_message
+
+    # ----- Build saved_output based on transfer outcome -----
+    if transfer_failed:
+        # include the API error message and the parsed transfer result in the function output
+        saved_output = {
+            "status": "saved",
+            "disposition": args.get("disposition") or 'Follow Up',
+            "customer_response": transfer_error_message,
+            "followup_time": args.get("followup_time"),
+            "notes": transfer_error_message,
+            "transfer_result": parsed_transfer,   # full parsed transfer result for debugging/record
+            "api_error": transfer_error_message,
+        }
+    else:
+        # normal saved output (no transfer failure)
+        saved_output = {
+            "status": "saved",
+            "disposition": 'Follow Up',
+            "customer_response": args.get("customer_response"),
+            "followup_time": args.get("followup_time"),
+            "notes": args.get("notes"),
+        }
+
+    # 1️⃣ Send function output back to OpenAI
+    await openai_ws.send(json.dumps({
+        "type": "conversation.item.create",
+        "item": {
+            "id": item_id,
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps(saved_output)
+        }
+    }))
+
+    # 2️⃣ Tell the model to speak confirmation / error (audio + text)
+    await openai_ws.send(json.dumps({
+        "type": "response.create",
+        "response": {
+            "modalities": ["audio", "text"],
+            "instructions": ai_greeting_instruction
+        }
+    }))
+
+
 async def lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state):
     city = args.get("city")
     state = args.get("state")
@@ -1745,6 +1830,11 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 url = "https://zapprod:zap2024@zap.snapit.software/api/updateailead"
             else:
                 url = "https://snapit:mysnapit22@zapstage.snapit.software/api/updateailead"
+        elif site == "MA":
+            if server == "Prod":
+                url = "https://malead:ma2024@ma.snapit.software/api/updateailead"
+            else:
+                url = "https://developer.leaddial.co/developer/api/tenant/lead/update-customer-info"
         else:
             if server == "Prod":
                 url = "https://linkup:newlink_up34@linkup.software/api/updateailead"
@@ -1999,6 +2089,51 @@ async def transfer_call(lead_id,transfer_type,site,server):
                     url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
                 else:
                     url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+            
+            print(f"[TRANSFER] Using URL: {url}")
+            
+            # Make the API call
+            async with aiohttp.ClientSession() as session:
+                # ✅ Add 3-second delay before making API call
+                await asyncio.sleep(2)
+                async with session.post(
+                    url,
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(payload)
+                ) as resp:
+                    if resp.status == 200:
+                        response_text = await resp.text()
+                        print(f"[TRANSFER] API call successful: {response_text}")
+                        return response_text
+                    else:
+                        response_text = await resp.text()
+                        raise Exception(f"API call failed with status {resp.status}: {response_text}")
+        
+        except Exception as e:
+            print(f"[TRANSFER] Error: {e}")
+
+
+async def transfer_ma_lead_call(lead_id,transfer_type,t_lead_id,lead_phone,site,server):
+        try:
+            print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+            
+            # Fetch lead data from database
+            
+            # Prepare the payload
+            payload = {
+            'lead_id': lead_id,
+            'lead_ob_call_id': t_lead_id,
+            'disposition': "transfer",
+            'lead_phone': lead_phone,
+            'follow_up_date': "",
+            'quote_sent_date': "",  # defaults to 0 if None or missing
+            'lead_IB_call_id': "",
+            }
+            
+            print(f"[TRANSFER] Payload: {payload}")
+            # Determine URL based on phone number
+
+            url = "https://developer.leaddial.co/developer/tenant/agent-call-center/save-call-me-now-ai"
             
             print(f"[TRANSFER] Using URL: {url}")
             
@@ -2310,6 +2445,94 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
 
+async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_lead_id, lead_phone, follow_up_time):
+    try:
+
+        if disposition_val == 'voice message':
+            disposition = 1
+        elif disposition_val == 'DNC':
+            disposition = 2
+        elif disposition_val == 'wrong phone':
+            disposition = 3
+        elif disposition_val == 'not interested':
+            disposition = 4
+        elif disposition_val == 'follow up':
+            disposition = 5
+        elif disposition_val == 'booked':
+            disposition = 6
+        elif disposition_val == 'booked with others':
+            disposition = 7
+        elif disposition_val == 'disconnected':
+            disposition = 8
+        elif disposition_val == 'no disposition':
+            disposition = 9
+        elif disposition_val == 'No Coverage':
+            disposition = 10
+        elif disposition_val == 'hang up':
+            disposition = 11
+        elif disposition_val == 'Quote Sent':
+            disposition = 12
+        elif disposition_val == 'transfer':
+            disposition = 13
+        else:
+            disposition = 14
+
+        params = {
+                "lead_id": lead_id,
+                "lead_ob_call_id": t_lead_id,
+                "disposition": disposition_val,
+                "lead_phone": lead_phone,
+                "quote_sent_date":"",
+                "lead_IB_call_id":""
+            }
+
+        if disposition == 5:
+            print('followup time:',follow_up_time)
+            dt = datetime.fromisoformat(follow_up_time)
+            dt_utc = pytz.utc.localize(dt)
+            est_time = dt_utc.astimezone(pytz.timezone("America/New_York"))
+            print('converted followup time:',follow_up_time)
+            #est = pytz.timezone("America/New_York")
+            #est_time = datetime.now(est)
+            #current_hour = est_time.hour
+            params["follow_up_date"] = est_time
+            print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
+        
+        # Build the new API URL and payload for LeadDial
+        api_url = "https://developer.leaddial.co/developer/tenant/agent-call-center/set-disposition-ai"
+        
+        
+        # Send request to the new API
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(api_url, json=params, headers=headers)
+        api_response_text = response.text if response.text else str(response)
+
+        print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
+
+        # -------------------------------
+        # SAVE API CALL LOG IN DATABASE
+        # -------------------------------
+        conn = get_db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                insert_query = """
+                    INSERT INTO dispotion_api_call_logs (lead_id, api_url, api_response, dispotion)
+                    VALUES (%s, %s, %s, %s)
+                """
+                cursor.execute(insert_query, (lead_id, api_url, api_response_text, disposition_val))
+                conn.commit()
+                print(f"[LOG] API call stored for lead {lead_id}")
+            except Exception as db_error:
+                print(f"[DB ERROR] Failed to insert log: {db_error}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    except Exception as e:
+        print(f"[DISPOSITION] Error updating lead disposition: {e}")
+
+
 async def ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id, conversation_state,instructions,dispotion,follow_up_time,stype):
     saved_output = {
         "status": "saved",
@@ -2350,7 +2573,13 @@ async def ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id,
 async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result):
 
     if lead_data_result == '1':
-        if brand_id == '2':
+
+        if brand_id == '5':
+            print("Ma-outbound")
+            prompt_obj = {
+                "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
+            }
+        elif brand_id == '2':
             print("vm-outbound")
             prompt_obj = {
                 "id": "pmpt_69262d5672f4819399859365246218520c851a4afbab2899"
@@ -2361,10 +2590,16 @@ async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
                 "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
             }
     else:
-        print("inbound")
-        prompt_obj = {
-            "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07"
-        }
+        if( brand_id == '5'):
+            print("Ma-inbound")
+            prompt_obj = {
+                "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
+            }
+        else:
+            print("inbound")
+            prompt_obj = {
+                "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07"
+            }
     print('prompt_check',prompt_to_use)
     # Force English responses
     session_update = {
