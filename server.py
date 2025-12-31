@@ -2572,14 +2572,13 @@ async def ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id,
 # ===============================================================
 async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result):
 
-    if lead_data_result == '1':
-
-        if brand_id == '5':
-            print("Ma-outbound")
-            prompt_obj = {
-                "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
-            }
-        elif brand_id == '2':
+    if brand_id == '5':
+        print("Ma-only")
+        prompt_obj = {
+            "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
+        }
+    elif lead_data_result == '1':
+        if brand_id == '2':
             print("vm-outbound")
             prompt_obj = {
                 "id": "pmpt_69262d5672f4819399859365246218520c851a4afbab2899"
@@ -2590,16 +2589,10 @@ async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
                 "id": "pmpt_69175111ddb88194b4a88fc70e6573780dfc117225380ded"
             }
     else:
-        if( brand_id == '5'):
-            print("Ma-inbound")
-            prompt_obj = {
-                "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
-            }
-        else:
-            print("inbound")
-            prompt_obj = {
-                "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07"
-            }
+        print("inbound")
+        prompt_obj = {
+            "id": "pmpt_691652392c1c8193a09ec47025d82ac305f13270ca49da07"
+        }
     print('prompt_check',prompt_to_use)
     # Force English responses
     session_update = {
@@ -2621,6 +2614,7 @@ async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
     }
     await openai_ws.send(json.dumps(session_update))
     print("Session update sent.")
+
 
 # ===============================================================
 # MAIN START
