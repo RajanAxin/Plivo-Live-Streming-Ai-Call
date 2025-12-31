@@ -938,6 +938,14 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 await handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "update_lead":
                 await update_or_add_lead_details(openai_ws, args, item_id, call_id, conversation_state)
+            elif fn == "send_inventory_link":
+                await send_inventory_link(openai_ws, args, item_id, call_id, conversation_state)
+            elif fn == "send_payment_link":
+                await send_payment_link(openai_ws, args, item_id, call_id, conversation_state)
+            elif fn == "send_invoice_link":
+                await send_invoice_link(openai_ws, args, item_id, call_id, conversation_state)
+            elif fn == "add_lead_note":
+                await add_lead_note(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "lookup_zip_options":
                 await lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state)
 
@@ -1814,6 +1822,102 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
         return False
 
 
+# ===============================================================
+# HANDLE FUNCTION: Ma lead function start
+# ===============================================================
+
+async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_state):
+    print("\n=== Sending Inventory Link ===")
+    print(args)
+    # Implement the logic to send inventory link here
+    # For now, just send a confirmation back to OpenAI
+    await openai_ws.send(json.dumps({
+        "type": "conversation.item.create",
+        "item": {
+            "id": item_id,
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"status": "Inventory link sent"})
+        }
+    }))
+    await openai_ws.send(json.dumps({
+        "type": "response.create",
+        "response": {
+            "modalities": ["audio", "text"],
+            "instructions": "The inventory link has been sent successfully."
+        }
+    }))
+
+async def send_payment_link(openai_ws, args, item_id, call_id, conversation_state):
+    print("\n=== Sending Payment Link ===")
+    print(args)
+    # Implement the logic to send payment link here
+    # For now, just send a confirmation back to OpenAI
+    await openai_ws.send(json.dumps({
+        "type": "conversation.item.create",
+        "item": {
+            "id": item_id,
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"status": "Payment link sent"})
+        }
+    }))
+    await openai_ws.send(json.dumps({
+        "type": "response.create",
+        "response": {
+            "modalities": ["audio", "text"],
+            "instructions": "The payment link has been sent successfully."
+        }
+    }))
+
+async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_state):
+    print("\n=== Sending Invoice Link ===")
+    print(args)
+    # Implement the logic to send invoice link here
+    # For now, just send a confirmation back to OpenAI
+    await openai_ws.send(json.dumps({
+        "type": "conversation.item.create",
+        "item": {
+            "id": item_id,
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"status": "Invoice link sent"})
+        }
+    }))
+    await openai_ws.send(json.dumps({
+        "type": "response.create",
+        "response": {
+            "modalities": ["audio", "text"],
+            "instructions": "The invoice link has been sent successfully."
+        }
+    }))
+
+async def add_lead_note(openai_ws, args, item_id, call_id, conversation_state):
+    print("\n=== Adding Lead Note ===")
+    print(args)
+
+    await openai_ws.send(json.dumps({
+        "type": "conversation.item.create",
+        "item": {
+            "id": item_id,
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"status": "Note added"})
+        }
+    }))
+    await openai_ws.send(json.dumps({
+        "type": "response.create",
+        "response": {
+            "modalities": ["audio", "text"],
+            "instructions": "The note has been added to the lead successfully."
+        }
+    }))
+    return True
+
+# ===============================================================
+# HANDLE FUNCTION: Ma lead function end
+# ===============================================================
+
 async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site, server):
     """
     Sends api_update_data to external updateailead endpoint and if the response
@@ -2133,7 +2237,7 @@ async def transfer_ma_lead_call(lead_id,transfer_type,t_lead_id,lead_phone,site,
             print(f"[TRANSFER] Payload: {payload}")
             # Determine URL based on phone number
 
-            url = "https://developer.leaddial.co/developer/tenant/agent-call-center/save-call-me-now-ai"
+            url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/save-call-me-now-ai"
             
             print(f"[TRANSFER] Using URL: {url}")
             
@@ -2499,7 +2603,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_lead_
             print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         
         # Build the new API URL and payload for LeadDial
-        api_url = "https://developer.leaddial.co/developer/tenant/agent-call-center/set-disposition-ai"
+        api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
         
         
         # Send request to the new API
