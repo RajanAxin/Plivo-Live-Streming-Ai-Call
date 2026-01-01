@@ -468,10 +468,12 @@ async def home():
     lead_type = lead_data['type'] if lead_data else 'outbound'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
+    lead_numbers_id = lead_data['lead_numbers_id'] if lead_data else 0
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"brand_id: {brand_id if brand_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
+    print(f"lead_numbers_id: {lead_numbers_id if lead_numbers_id else 'N/A'}")
     print(f"lead_data_result: {lead_data_result if lead_data_result else 'N/A'}")
     
     ws_url = (
@@ -491,7 +493,8 @@ async def home():
     f"&amp;lead_timezone={lead_timezone}"
     f"&amp;site={site}"
     f"&amp;server={server}"
-    f"&amp;lead_type={lead_type}"
+    f"&amp;lead_type={lead_type}",
+    f"&amp;lead_numbers_id={lead_numbers_id}",
     f"&amp;lead_data_result={lead_data_result}"
     )              
     print('ws-url',ws_url)
@@ -656,8 +659,10 @@ async def handle_message():
     site = websocket.args.get('site', 'unknown')
     server = websocket.args.get('server', 'unknown')
     lead_type = websocket.args.get('lead_type', 'unknown')
+    lead_numbers_id = websocket.args.get('lead_numbers_id', 'unknown')
     lead_data_result = websocket.args.get('lead_data_result', 'unknown')
     print('lead_id', lead_id)
+    print('lead_numbers_id', lead_numbers_id)
     print('lead_data_result', lead_data_result)
     print('audio_message', audio_message)
     print('voice_name', voice_name)
@@ -672,6 +677,7 @@ async def handle_message():
         'user_partial':'',
         'current_ai_text': '',
         'lead_id': lead_id,
+        'lead_numbers_id': lead_numbers_id,
         't_lead_id': t_lead_id,
         'site': site,
         'server': server,
@@ -1831,6 +1837,19 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
     print(args)
     # Implement the logic to send inventory link here
     # For now, just send a confirmation back to OpenAI
+
+    payload = {
+        "lead_numbers_id": conversation_state.get('lead_numbers_id'),
+        "message": args.get('content', ''),
+        "type": "text"
+    }
+    
+    api_success = await sms_send_or_not_fun(
+        conversation_state.get('site'), 
+        conversation_state.get('server'), 
+        payload
+    )
+    print(f"[TRANSFER] API call result: {api_success}")
     await openai_ws.send(json.dumps({
         "type": "conversation.item.create",
         "item": {
@@ -1853,6 +1872,19 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
     print(args)
     # Implement the logic to send payment link here
     # For now, just send a confirmation back to OpenAI
+
+    payload = {
+        "lead_numbers_id": conversation_state.get('lead_numbers_id'),
+        "message": args.get('content', ''),
+        "type": "text"
+    }
+    
+    api_success = await sms_send_or_not_fun(
+        conversation_state.get('site'), 
+        conversation_state.get('server'), 
+        payload
+    )
+    print(f"[TRANSFER] API call result: {api_success}")
     await openai_ws.send(json.dumps({
         "type": "conversation.item.create",
         "item": {
@@ -1873,8 +1905,20 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
 async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Sending Invoice Link ===")
     print(args)
-    # Implement the logic to send invoice link here
-    # For now, just send a confirmation back to OpenAI
+    
+    payload = {
+        "lead_numbers_id": conversation_state.get('lead_numbers_id'),
+        "message": args.get('content', ''),
+        "type": "text"
+    }
+    
+    api_success = await sms_send_or_not_fun(
+        conversation_state.get('site'), 
+        conversation_state.get('server'), 
+        payload
+    )
+    print(f"[TRANSFER] API call result: {api_success}")
+
     await openai_ws.send(json.dumps({
         "type": "conversation.item.create",
         "item": {
@@ -1892,19 +1936,35 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
         }
     }))
 
+
 async def add_lead_note(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Adding Lead Note ===")
     print(args)
+    
+    payload = {
+        "lead_numbers_id": conversation_state.get('lead_numbers_id'),
+        "message": args.get('content', ''),
+        "type": "note"
+    }
+    
+    api_success = await sms_send_or_not_fun(
+        conversation_state.get('site'), 
+        conversation_state.get('server'), 
+        payload
+    )
+    print(f"[TRANSFER] API call result: {api_success}")
 
+    # Send response back to OpenAI
     await openai_ws.send(json.dumps({
         "type": "conversation.item.create",
         "item": {
             "id": item_id,
             "type": "function_call_output",
             "call_id": call_id,
-            "output": json.dumps({"status": "Note added"})
+            "output": json.dumps({"status": "Note added successfully"})
         }
     }))
+    
     await openai_ws.send(json.dumps({
         "type": "response.create",
         "response": {
@@ -1912,7 +1972,54 @@ async def add_lead_note(openai_ws, args, item_id, call_id, conversation_state):
             "instructions": "The note has been added to the lead successfully."
         }
     }))
+    
     return True
+
+
+async def sms_send_or_not_fun(site, server, payload):
+    """
+    Sends SMS via external API if site is "MA".
+    - For Prod server: Uses the production URL
+    - For other servers: Uses the development URL
+    Returns True on successful API call, False otherwise.
+    If site is not "MA", returns True (no API call needed).
+    """
+    print(f"[TRANSFER] Checking SMS send conditions: site={site}, server={server}")
+    
+    # If site is not MA, don't make API call
+    if site != "MA":
+        print(f"[TRANSFER] Site is not MA ({site}), skipping API call")
+        return True
+    
+    # Determine which URL to use based on server
+    if server == "Prod":
+        url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+    else:
+        url = "https://developer.leaddial.co/developer/api/tenant/lead/send-customer-sms"
+    
+    print(f"[TRANSFER] Using URL: {url}")
+    
+    # Make the API call
+    async with aiohttp.ClientSession() as session:
+        await asyncio.sleep(2)
+        try:
+            async with session.post(
+                url,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(payload),
+                timeout=aiohttp.ClientTimeout(total=10)  # Added timeout
+            ) as resp:
+                if resp.status == 200:
+                    response_text = await resp.json()
+                    print(f"[TRANSFER] API call successful: {response_text}")
+                    return True
+                else:
+                    response_text = await resp.json()
+                    print(f"[TRANSFER] API call failed with status {resp.status}: {response_text}")
+                    return False
+        except Exception as e:
+            print(f"[TRANSFER] API call error: {e}")
+            return False
 
 # ===============================================================
 # HANDLE FUNCTION: Ma lead function end
