@@ -1607,7 +1607,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     follow_up_time = args.get("followup_time")
 
     if args.get("disposition") is not None:
-        if args.get("disposition") == 'Live Transfer':
+        if args.get("disposition") == 'transfer':
                 ai_greeting_instruction = "Yes we have moving company avaliable"
                 transfer_result = await transfer_ma_lead_call(conversation_state['t_rep_id'], conversation_state['lead_type'],conversation_state['t_call_id'])
         else:
