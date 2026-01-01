@@ -1865,7 +1865,7 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
 
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
-        "message": args.get('content', ''),
+        "message": args.get('inventory_link', ''),
         "type": "text"
     }
     
@@ -1900,7 +1900,7 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
 
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
-        "message": args.get('content', ''),
+        "message": args.get('payment_link', ''),
         "type": "text"
     }
     
@@ -1933,7 +1933,7 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
     
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
-        "message": args.get('content', ''),
+        "message": args.get('invoice_link', ''),
         "type": "text"
     }
     
@@ -1968,7 +1968,7 @@ async def add_lead_note(openai_ws, args, item_id, call_id, conversation_state):
     
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
-        "message": args.get('content', ''),
+        "message": args.get('note', ''),
         "type": "note"
     }
     
