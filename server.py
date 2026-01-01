@@ -468,7 +468,7 @@ async def home():
     lead_type = lead_data['type'] if lead_data else 'outbound'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
-    lead_numbers_id = lead_data['lead_numbers_id'] if lead_data else 0
+    lead_numbers_id = lead_data.get('lead_numbers_id', 0) if lead_data else 0
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"brand_id: {brand_id if brand_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
@@ -494,7 +494,7 @@ async def home():
     f"&amp;site={site}"
     f"&amp;server={server}"
     f"&amp;lead_type={lead_type}",
-    f"&amp;lead_numbers_id={quote(lead_numbers_id)}",
+    f"&amp;lead_numbers_id={lead_numbers_id}",
     f"&amp;lead_data_result={lead_data_result}"
     )              
     print('ws-url',ws_url)
