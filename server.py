@@ -466,6 +466,7 @@ async def home():
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
     t_call_id = lead_data['t_call_id'] if lead_data else 0
+    t_rep_id = lead_data['t_rep_id'] if lead_data else 0
     lead_type = lead_data['type'] if lead_data else 'outbound'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
@@ -475,6 +476,7 @@ async def home():
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"brand_id: {brand_id if brand_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
+    print(f"t_rep_id: {t_rep_id if t_rep_id else 'N/A'}")
     print(f"t_call_id: {t_call_id if t_call_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
     print(f"lead_numbers_id: {lead_numbers_id if lead_numbers_id else 'N/A'}")
@@ -499,6 +501,7 @@ async def home():
     f"&amp;site={site}"
     f"&amp;server={server}"
     f"&amp;lead_type={lead_type}"
+    f"&amp;t_rep_id={t_rep_id}"
     f"&amp;lead_numbers_id={lead_numbers_id}"
     f"&amp;lead_data_result={lead_data_result}"
     )              
@@ -664,6 +667,7 @@ async def handle_message():
     lead_phone = websocket.args.get('lead_phone', 'unknown')
     site = websocket.args.get('site', 'unknown')
     server = websocket.args.get('server', 'unknown')
+    t_rep_id = websocket.args.get('t_rep_id', 'unknown')
     lead_type = websocket.args.get('lead_type', 'unknown')
     lead_numbers_id = websocket.args.get('lead_numbers_id', 'unknown')
     lead_data_result = websocket.args.get('lead_data_result', 'unknown')
@@ -687,6 +691,7 @@ async def handle_message():
         'lead_numbers_id': lead_numbers_id,
         't_lead_id': t_lead_id,
         't_call_id': t_call_id,
+        't_rep_id': t_rep_id,
         'site': site,
         'server': server,
         'call_uuid': call_uuid,
@@ -1604,7 +1609,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     if args.get("disposition") is not None:
         if args.get("disposition") == 'Live Transfer':
                 ai_greeting_instruction = "Yes we have moving company avaliable"
-                transfer_result = await transfer_ma_lead_call(conversation_state['t_lead_id'], 1, conversation_state['t_call_id'], conversation_state['lead_phone'], conversation_state['site'], conversation_state['server'])
+                transfer_result = await transfer_ma_lead_call(conversation_state['t_rep_id'], conversation_state['lead_type'],conversation_state['t_call_id'])
         else:
             await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
@@ -1961,7 +1966,7 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
             payload
         )
         print(f"[TRANSFER] API call result: {api_success}")
-    
+
         await openai_ws.send(json.dumps({
             "type": "conversation.item.create",
             "item": {
@@ -2367,27 +2372,28 @@ async def transfer_call(lead_id,transfer_type,site,server):
             print(f"[TRANSFER] Error: {e}")
 
 
-async def transfer_ma_lead_call(lead_id,transfer_type,t_lead_id,lead_phone,site,server):
+async def transfer_ma_lead_call(rep_id,lead_type,t_call_id):
         try:
-            print(f"[TRANSFER] Starting call transfer for lead_id: {lead_id}")
+            print(f"[TRANSFER] Starting call transfer for rep_id: {rep_id}")
             
             # Fetch lead data from database
             
             # Prepare the payload
             payload = {
-            'lead_id': lead_id,
-            'lead_ob_call_id': t_lead_id,
-            'disposition': "transfer",
-            'lead_phone': lead_phone,
-            'follow_up_date': "",
-            'quote_sent_date': "",  # defaults to 0 if None or missing
-            'lead_IB_call_id': "",
+            'rep_id': rep_id,
+            'user_id': 32,
+            'lead_ob_call_id ': "",
+            'lead_IB_call_id ': "",
             }
             
+            if lead_type == 'inbound':
+                payload['lead_IB_call_id '] = t_call_id
+            else:
+                payload['lead_ob_call_id '] = t_call_id
             print(f"[TRANSFER] Payload: {payload}")
             # Determine URL based on phone number
 
-            url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/save-call-me-now-ai"
+            url = "https://developer.leaddial.co/developer/tenant/communication/transfer-call-to-rep"
             
             print(f"[TRANSFER] Using URL: {url}")
             
@@ -2750,6 +2756,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
             #est_time = datetime.now(est)
             #current_hour = est_time.hour
             params["follow_up_date"] = formatted_est_time
+            params["quote_sent_date"] = formatted_est_time
             print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
             print('params',params)
         # Build the new API URL and payload for LeadDial
