@@ -732,6 +732,8 @@ async def handle_message():
                                         prompt_text = prompt_text.replace("[lead_status]", safe_value)
                                     elif key == "payment_link" and value:
                                         prompt_text = prompt_text.replace("[payment_link]", safe_value)
+                                        print('payment_link_links',safe_value)
+                                        print('payment_link_links',key)
                                     elif key == "invoice_link" and value:
                                         prompt_text = prompt_text.replace("[invoice_link]", safe_value)
                                     elif key == "inventory_link" and value:
