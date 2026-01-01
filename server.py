@@ -729,6 +729,16 @@ async def handle_message():
                                             prompt_text = prompt_text.replace(placeholder, str(value))  # fallback
                                     elif key == "lead_status" and value:
                                         prompt_text = prompt_text.replace("[lead_status]", str(value))
+                                    elif key == "payment_link" and value:
+                                        prompt_text = prompt_text.replace("[payment_link]", str(value))
+                                    elif key == "invoice_link" and value:
+                                        prompt_text = prompt_text.replace("[invoice_link]", str(value))
+                                    elif key == "inventory_link" and value:
+                                        prompt_text = prompt_text.replace("[inventory_link]", str(value))
+                                    elif key == "booking_id" and value:
+                                        prompt_text = prompt_text.replace("[booking_id]", str(value))
+                                    elif key == "agent_transfer" and value:
+                                        prompt_text = prompt_text.replace("[agent_transfer]", str(value))
                                     else:
                                         prompt_text = prompt_text.replace(placeholder, str(value))
                         except (ValueError, TypeError):
