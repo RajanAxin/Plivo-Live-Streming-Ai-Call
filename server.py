@@ -466,7 +466,7 @@ async def home():
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
     t_call_id = lead_data['t_call_id'] if lead_data else 0
-    t_rep_id = lead_data['t_rep_id'] if lead_data else 0
+    agent_transfer = lead_data['agent_transfer'] if lead_data else 0
     lead_type = lead_data['type'] if lead_data else 'outbound'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
@@ -476,7 +476,7 @@ async def home():
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"brand_id: {brand_id if brand_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
-    print(f"t_rep_id: {t_rep_id if t_rep_id else 'N/A'}")
+    print(f"agent_transfer: {agent_transfer if agent_transfer else 'N/A'}")
     print(f"t_call_id: {t_call_id if t_call_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
     print(f"lead_numbers_id: {lead_numbers_id if lead_numbers_id else 'N/A'}")
@@ -501,7 +501,7 @@ async def home():
     f"&amp;site={site}"
     f"&amp;server={server}"
     f"&amp;lead_type={lead_type}"
-    f"&amp;t_rep_id={t_rep_id}"
+    f"&amp;agent_transfer={agent_transfer}"
     f"&amp;lead_numbers_id={lead_numbers_id}"
     f"&amp;lead_data_result={lead_data_result}"
     )              
@@ -667,7 +667,7 @@ async def handle_message():
     lead_phone = websocket.args.get('lead_phone', 'unknown')
     site = websocket.args.get('site', 'unknown')
     server = websocket.args.get('server', 'unknown')
-    t_rep_id = websocket.args.get('t_rep_id', 'unknown')
+    agent_transfer = websocket.args.get('agent_transfer', 'unknown')
     lead_type = websocket.args.get('lead_type', 'unknown')
     lead_numbers_id = websocket.args.get('lead_numbers_id', 'unknown')
     lead_data_result = websocket.args.get('lead_data_result', 'unknown')
@@ -691,7 +691,7 @@ async def handle_message():
         'lead_numbers_id': lead_numbers_id,
         't_lead_id': t_lead_id,
         't_call_id': t_call_id,
-        't_rep_id': t_rep_id,
+        'agent_transfer': agent_transfer,
         'lead_type': lead_type,
         'site': site,
         'server': server,
@@ -1609,67 +1609,17 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
 
     if args.get("disposition") is not None:
         if args.get("disposition") == 'transfer':
-                ai_greeting_instruction = "Yes we have moving company avaliable"
-                transfer_result = await transfer_ma_lead_call(conversation_state['t_rep_id'], conversation_state['lead_type'],conversation_state['t_call_id'])
+                if conversation_state['agent_transfer'] == None:
+                    ai_greeting_instruction = "no agent available at this moment"
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "transfer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+                else:
+                    transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
+                    print(f'Transfer Result: {transfer_result}')
+                    ai_greeting_instruction = "call trasnfer done to the agent"
         else:
             await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
 
-    # ----- Handle transfer_result if present -----
-    parsed_transfer = None
-    transfer_failed = False
-    transfer_error_message = None
-
-    if transfer_result:
-        parsed_transfer = ensure_dict(transfer_result)
-        print('tresult', parsed_transfer)
-        try:
-            status = parsed_transfer.get("status")
-            transfer_error_message = parsed_transfer.get("error") or parsed_transfer.get("data") or "Transfer failed."
-            print('status', status)
-            if status == "FAILURE":
-                transfer_failed = True
-                await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "No Buyer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
-                ai_greeting_instruction = transfer_error_message  # make model speak the error
-        except Exception as e:
-            print("Transfer result parsing error:", e)
-            # keep going; don't crash — but set a generic message
-            transfer_failed = True
-            transfer_error_message = "Transfer failed (parse error)."
-            ai_greeting_instruction = transfer_error_message
-
-    # ----- Build saved_output based on transfer outcome -----
-    if transfer_failed:
-        # include the API error message and the parsed transfer result in the function output
-        saved_output = {
-            "status": "saved",
-            "disposition": args.get("disposition") or 'Follow Up',
-            "customer_response": transfer_error_message,
-            "followup_time": args.get("followup_time"),
-            "notes": transfer_error_message,
-            "transfer_result": parsed_transfer,   # full parsed transfer result for debugging/record
-            "api_error": transfer_error_message,
-        }
-    else:
-        # normal saved output (no transfer failure)
-        saved_output = {
-            "status": "saved",
-            "disposition": 'Follow Up',
-            "customer_response": args.get("customer_response"),
-            "followup_time": args.get("followup_time"),
-            "notes": args.get("notes"),
-        }
-
-    # 1️⃣ Send function output back to OpenAI
-    await openai_ws.send(json.dumps({
-        "type": "conversation.item.create",
-        "item": {
-            "id": item_id,
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": json.dumps(saved_output)
-        }
-    }))
 
     # 2️⃣ Tell the model to speak confirmation / error (audio + text)
     await openai_ws.send(json.dumps({
