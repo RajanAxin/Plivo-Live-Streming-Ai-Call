@@ -2755,9 +2755,9 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
         
         # Send request to the new API
         response = requests.get(api_url, data=params)
-        api_response_text = response.msg if response.msg else str(response)
+        #api_response_text = response.msg if response.msg else str(response)
         print(f"[DISPOSITION] Response: {response}")
-        print(f"[DISPOSITION] API Response: {api_response_text}")
+        #print(f"[DISPOSITION] API Response: {api_response_text}")
         #print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
 
         # -------------------------------
@@ -2771,7 +2771,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
                     INSERT INTO dispotion_api_call_logs (lead_id, api_url, api_response, dispotion)
                     VALUES (%s, %s, %s, %s)
                 """
-                cursor.execute(insert_query, (lead_id, api_url, api_response_text, disposition_val))
+                cursor.execute(insert_query, (lead_id, api_url, 'None', disposition_val))
                 conn.commit()
                 print(f"[LOG] API call stored for lead {lead_id}")
             except Exception as db_error:
