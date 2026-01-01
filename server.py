@@ -1604,9 +1604,9 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     if args.get("disposition") is not None:
         if args.get("disposition") == 'Live Transfer':
                 ai_greeting_instruction = "Yes we have moving company avaliable"
-                transfer_result = await transfer_ma_lead_call(conversation_state['lead_id'], 1, conversation_state['t_call_id'], conversation_state['lead_phone'], conversation_state['site'], conversation_state['server'])
+                transfer_result = await transfer_ma_lead_call(conversation_state['t_lead_id'], 1, conversation_state['t_call_id'], conversation_state['lead_phone'], conversation_state['site'], conversation_state['server'])
         else:
-            await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+            await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
 
     # ----- Handle transfer_result if present -----
@@ -1623,7 +1623,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
             print('status', status)
             if status == "FAILURE":
                 transfer_failed = True
-                await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], "No Buyer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+                await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "No Buyer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
                 ai_greeting_instruction = transfer_error_message  # make model speak the error
         except Exception as e:
             print("Transfer result parsing error:", e)
@@ -2755,7 +2755,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
         
         # Send request to the new API
         headers = {'Content-Type': 'application/json'}
-        response = requests.post(api_url, json=params, headers=headers)
+        response = requests.get(api_url, data=params, headers=headers)
         api_response_text = response.text if response.text else str(response)
         print(f"[DISPOSITION] Response: {response}")
         print(f"[DISPOSITION] API Response: {api_response_text}")
