@@ -2736,19 +2736,19 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
                 "quote_sent_date":"",
                 "lead_IB_call_id":""
             }
-        print('params',params)
-        if disposition == 5:
+        if disposition_val == 'follow up':
             print('followup time:',follow_up_time)
             dt = datetime.fromisoformat(follow_up_time)
             dt_utc = pytz.utc.localize(dt)
             est_time = dt_utc.astimezone(pytz.timezone("America/New_York"))
-            print('converted followup time:',follow_up_time)
+            formatted_est_time = est_time.strftime('%Y-%m-%d %H:%M:%S')
+            print('converted followup time:',formatted_est_time)
             #est = pytz.timezone("America/New_York")
             #est_time = datetime.now(est)
             #current_hour = est_time.hour
-            params["follow_up_date"] = est_time
+            params["follow_up_date"] = formatted_est_time
             print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
-        
+            print('params',params)
         # Build the new API URL and payload for LeadDial
         api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
         
