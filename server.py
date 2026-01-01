@@ -465,6 +465,7 @@ async def home():
     lead_timezone = lead_data['t_timezone'] if lead_data else 0
     lead_phone = lead_data['phone'] if lead_data else 0
     t_lead_id = lead_data['t_lead_id'] if lead_data else 0
+    t_call_id = lead_data['t_call_id'] if lead_data else 0
     lead_type = lead_data['type'] if lead_data else 'outbound'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
@@ -474,6 +475,7 @@ async def home():
     print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
     print(f"brand_id: {brand_id if brand_id else 'N/A'}")
     print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
+    print(f"t_call_id: {t_call_id if t_call_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
     print(f"lead_numbers_id: {lead_numbers_id if lead_numbers_id else 'N/A'}")
     print(f"lead_data_result: {lead_data_result if lead_data_result else 'N/A'}")
@@ -488,6 +490,7 @@ async def home():
     f"&amp;lead_id={lead_id}"
     f"&amp;brand_id={brand_id}"
     f"&amp;t_lead_id={t_lead_id}"
+    f"&amp;t_call_id={t_call_id}"
     f"&amp;voice_name={voice_name}"
     f"&amp;ai_agent_name={quote(ai_agent_name)}"
     f"&amp;brand_name={quote(brand_name)}"
@@ -656,6 +659,7 @@ async def handle_message():
     lead_id = websocket.args.get('lead_id', 'unknown')
     brand_id = websocket.args.get('brand_id', 'unknown')
     t_lead_id = websocket.args.get('t_lead_id', 'unknown')
+    t_call_id = websocket.args.get('t_call_id', 'unknown')
     lead_timezone = websocket.args.get('lead_timezone', 'unknown')
     lead_phone = websocket.args.get('lead_phone', 'unknown')
     site = websocket.args.get('site', 'unknown')
@@ -665,6 +669,7 @@ async def handle_message():
     lead_data_result = websocket.args.get('lead_data_result', 'unknown')
     print('lead_id', lead_id)
     print('lead_numbers_id', lead_numbers_id)
+    print('t_call_id', t_call_id)
     print('lead_data_result', lead_data_result)
     print('audio_message', audio_message)
     print('voice_name', voice_name)
@@ -681,6 +686,7 @@ async def handle_message():
         'lead_id': lead_id,
         'lead_numbers_id': lead_numbers_id,
         't_lead_id': t_lead_id,
+        't_call_id': t_call_id,
         'site': site,
         'server': server,
         'call_uuid': call_uuid,
@@ -1598,9 +1604,9 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     if args.get("disposition") is not None:
         if args.get("disposition") == 'Live Transfer':
                 ai_greeting_instruction = "Yes we have moving company avaliable"
-                transfer_result = await transfer_ma_lead_call(conversation_state['lead_id'], 1, conversation_state['t_lead_id'], conversation_state['lead_phone'], conversation_state['site'], conversation_state['server'])
+                transfer_result = await transfer_ma_lead_call(conversation_state['lead_id'], 1, conversation_state['t_call_id'], conversation_state['lead_phone'], conversation_state['site'], conversation_state['server'])
         else:
-            await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), conversation_state['t_lead_id'], conversation_state['lead_phone'], follow_up_time)
+            await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
 
     # ----- Handle transfer_result if present -----
@@ -1617,7 +1623,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
             print('status', status)
             if status == "FAILURE":
                 transfer_failed = True
-                await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], "No Buyer", conversation_state['t_lead_id'], conversation_state['lead_phone'], follow_up_time)
+                await set_ma_lead_dispostion_status_update(conversation_state['lead_id'], "No Buyer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
                 ai_greeting_instruction = transfer_error_message  # make model speak the error
         except Exception as e:
             print("Transfer result parsing error:", e)
@@ -2690,7 +2696,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
 
-async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_lead_id, lead_phone, follow_up_time):
+async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_id, lead_phone, follow_up_time):
     try:
 
         if disposition_val == 'voice message':
@@ -2724,7 +2730,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_lead_
 
         params = {
                 "lead_id": lead_id,
-                "lead_ob_call_id": t_lead_id,
+                "lead_ob_call_id": t_call_id,
                 "disposition": disposition_val,
                 "lead_phone": lead_phone,
                 "quote_sent_date":"",
