@@ -692,6 +692,7 @@ async def handle_message():
         't_lead_id': t_lead_id,
         't_call_id': t_call_id,
         't_rep_id': t_rep_id,
+        'lead_type': lead_type,
         'site': site,
         'server': server,
         'call_uuid': call_uuid,
