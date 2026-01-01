@@ -2736,7 +2736,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
                 "quote_sent_date":"",
                 "lead_IB_call_id":""
             }
-
+        print('params',params)
         if disposition == 5:
             print('followup time:',follow_up_time)
             dt = datetime.fromisoformat(follow_up_time)
@@ -2757,7 +2757,8 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
         headers = {'Content-Type': 'application/json'}
         response = requests.post(api_url, json=params, headers=headers)
         api_response_text = response.text if response.text else str(response)
-
+        print(f"[DISPOSITION] Response: {response}")
+        print(f"[DISPOSITION] API Response: {api_response_text}")
         print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
 
         # -------------------------------
