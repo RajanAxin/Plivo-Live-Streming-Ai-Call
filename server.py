@@ -719,6 +719,7 @@ async def handle_message():
                                 prompt_text = prompt_text.replace("[brand_name]", brand_name)
                                 for key, value in lead_data.items():
                                     placeholder = f"[lead_{key}]"
+                                    safe_value = "" if value is None else str(value)
                                     # Special handling for move_size placeholder
                                     if key == "move_size" and value:
                                         cursor.execute("SELECT move_size FROM mst_move_size WHERE move_size_id = %s", (value,))
@@ -726,21 +727,21 @@ async def handle_message():
                                         if size_row:
                                             prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
                                         else:
-                                            prompt_text = prompt_text.replace(placeholder, str(value))  # fallback
+                                            prompt_text = prompt_text.replace(placeholder, safe_value)  # fallback
                                     elif key == "lead_status" and value:
-                                        prompt_text = prompt_text.replace("[lead_status]", str(value))
+                                        prompt_text = prompt_text.replace("[lead_status]", safe_value)
                                     elif key == "payment_link" and value:
-                                        prompt_text = prompt_text.replace("[payment_link]", str(value))
+                                        prompt_text = prompt_text.replace("[payment_link]", safe_value)
                                     elif key == "invoice_link" and value:
-                                        prompt_text = prompt_text.replace("[invoice_link]", str(value))
+                                        prompt_text = prompt_text.replace("[invoice_link]", safe_value)
                                     elif key == "inventory_link" and value:
-                                        prompt_text = prompt_text.replace("[inventory_link]", str(value))
+                                        prompt_text = prompt_text.replace("[inventory_link]", safe_value)
                                     elif key == "booking_id" and value:
-                                        prompt_text = prompt_text.replace("[booking_id]", str(value))
+                                        prompt_text = prompt_text.replace("[booking_id]", safe_value)
                                     elif key == "agent_transfer" and value:
-                                        prompt_text = prompt_text.replace("[agent_transfer]", str(value))
+                                        prompt_text = prompt_text.replace("[agent_transfer]", safe_value)
                                     else:
-                                        prompt_text = prompt_text.replace(placeholder, str(value))
+                                        prompt_text = prompt_text.replace(placeholder, safe_value)
                         except (ValueError, TypeError):
                             print(f"Invalid lead_id: {lead_id}")
             except Exception as e:
