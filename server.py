@@ -495,8 +495,8 @@ async def home():
     f"&amp;lead_timezone={lead_timezone}"
     f"&amp;site={site}"
     f"&amp;server={server}"
-    f"&amp;lead_type={lead_type}",
-    f"&amp;lead_numbers_id={lead_numbers_id}",
+    f"&amp;lead_type={lead_type}"
+    f"&amp;lead_numbers_id={lead_numbers_id}"
     f"&amp;lead_data_result={lead_data_result}"
     )              
     print('ws-url',ws_url)
