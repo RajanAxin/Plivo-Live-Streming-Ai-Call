@@ -1716,28 +1716,51 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
             api_update_data['to_zipcode'] = args['to_zip']
         if args.get('move_size'):
             move_size_lower = args['move_size'].lower()
-        
-            if re.search(r'\bstudio(\s*(apartment|room))?\b', move_size_lower):
-                update_data['move_size'] = 1
-                api_update_data['move_size_id'] = 1
-            elif re.search(r'\b(1\s*bed(room)?s?|one\s*bed(room)?s?|1\s*br|1\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 2
-                api_update_data['move_size_id'] = 2
-            elif re.search(r'\b(2\s*bed(room)?s?|two\s*bed(room)?s?|2\s*br|2\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 3
-                api_update_data['move_size_id'] = 3
-            elif re.search(r'\b(3\s*bed(room)?s?|three\s*bed(room)?s?|3\s*br|3\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 4
-                api_update_data['move_size_id'] = 4
-            elif re.search(r'\b(4\s*bed(room)?s?|four\s*bed(room)?s?|4\s*br|4\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 5
-                api_update_data['move_size_id'] = 5
-            elif re.search(r'\b(5\s*\+|5\s*bed(room)?s?|five\s*bed(room)?s?|5\s*br|5\s*bhk)\b', move_size_lower):
-                update_data['move_size'] = 6
-                api_update_data['move_size_id'] = 6
-            else:
-                update_data['move_size'] = args['move_size']
-                api_update_data['move_size_id'] = args['move_size']
+
+            if conversation_state.get('site','').lower() == 'ma':
+                if re.search(r'\bstudio(\s*(apartment|room))?\b', move_size_lower):
+                    update_data['move_size'] = 1
+                    api_update_data['move_size'] = args['move_size']
+                elif re.search(r'\b(1\s*bed(room)?s?|one\s*bed(room)?s?|1\s*br|1\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 2
+                    api_update_data['move_size'] = args['move_size']
+                elif re.search(r'\b(2\s*bed(room)?s?|two\s*bed(room)?s?|2\s*br|2\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 3
+                    api_update_data['move_size'] = args['move_size']
+                elif re.search(r'\b(3\s*bed(room)?s?|three\s*bed(room)?s?|3\s*br|3\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 4
+                    api_update_data['move_size'] = args['move_size']
+                elif re.search(r'\b(4\s*bed(room)?s?|four\s*bed(room)?s?|4\s*br|4\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 5
+                    api_update_data['move_size'] = args['move_size']
+                elif re.search(r'\b(5\s*\+|5\s*bed(room)?s?|five\s*bed(room)?s?|5\s*br|5\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 6
+                    api_update_data['move_size'] = args['move_size']
+                else:
+                    update_data['move_size'] = args['move_size']
+                    api_update_data['move_size'] = args['move_size']
+            else:    
+                if re.search(r'\bstudio(\s*(apartment|room))?\b', move_size_lower):
+                    update_data['move_size'] = 1
+                    api_update_data['move_size_id'] = 1
+                elif re.search(r'\b(1\s*bed(room)?s?|one\s*bed(room)?s?|1\s*br|1\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 2
+                    api_update_data['move_size_id'] = 2
+                elif re.search(r'\b(2\s*bed(room)?s?|two\s*bed(room)?s?|2\s*br|2\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 3
+                    api_update_data['move_size_id'] = 3
+                elif re.search(r'\b(3\s*bed(room)?s?|three\s*bed(room)?s?|3\s*br|3\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 4
+                    api_update_data['move_size_id'] = 4
+                elif re.search(r'\b(4\s*bed(room)?s?|four\s*bed(room)?s?|4\s*br|4\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 5
+                    api_update_data['move_size_id'] = 5
+                elif re.search(r'\b(5\s*\+|5\s*bed(room)?s?|five\s*bed(room)?s?|5\s*br|5\s*bhk)\b', move_size_lower):
+                    update_data['move_size'] = 6
+                    api_update_data['move_size_id'] = 6
+                else:
+                    update_data['move_size'] = args['move_size']
+                    api_update_data['move_size_id'] = args['move_size']
         if args.get('move_date'):
             original_date = args['move_date']
             try:
