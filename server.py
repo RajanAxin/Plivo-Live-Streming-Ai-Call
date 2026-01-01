@@ -2754,7 +2754,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
         
         
         # Send request to the new API
-        response = requests.get(api_url, data=params)
+        response = requests.get(api_url, params=params)
         #api_response_text = response.msg if response.msg else str(response)
         print(f"[DISPOSITION] Response: {response}")
         #print(f"[DISPOSITION] API Response: {api_response_text}")
