@@ -1883,29 +1883,47 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
         "type": "text"
     }
     
-    
-    api_success = await sms_send_or_not_fun(
-        conversation_state.get('site'), 
-        conversation_state.get('server'), 
-        payload
-    )
-    print(f"[TRANSFER] API call result: {api_success}")
-    await openai_ws.send(json.dumps({
-        "type": "conversation.item.create",
-        "item": {
-            "id": item_id,
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": json.dumps({"status": "Payment link sent"})
-        }
-    }))
-    await openai_ws.send(json.dumps({
-        "type": "response.create",
-        "response": {
-            "modalities": ["audio", "text"],
-            "instructions": "The payment link has been sent successfully."
-        }
-    }))
+    if args.get('payment_link', '') == '':
+        print("[PAYMENT LINK] No payment link provided, skipping SMS send.")
+        await openai_ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "id": item_id,
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps({"status": "We are unable to send a payment link right now because the lead is not booked."})
+            }
+        }))
+        await openai_ws.send(json.dumps({
+            "type": "response.create",
+            "response": {
+                "modalities": ["audio", "text"],
+                "instructions": "Right now your lead status  is not booked, so I can't send that. i've noted this and our representative will update you shortly."
+            }
+        }))
+    else:
+        api_success = await sms_send_or_not_fun(
+            conversation_state.get('site'), 
+            conversation_state.get('server'), 
+            payload
+        )
+        print(f"[TRANSFER] API call result: {api_success}")
+        await openai_ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "id": item_id,
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps({"status": "Payment link sent"})
+            }
+        }))
+        await openai_ws.send(json.dumps({
+            "type": "response.create",
+            "response": {
+                "modalities": ["audio", "text"],
+                "instructions": "The payment link has been sent successfully."
+            }
+        }))
 
 async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Sending Invoice Link ===")
