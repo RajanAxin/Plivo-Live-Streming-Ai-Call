@@ -737,10 +737,7 @@ async def handle_message():
                                         cursor.execute("SELECT move_size FROM mst_move_size WHERE move_size_id = %s", (value,))
                                         size_row = cursor.fetchone()
                                         if size_row:
-                                            if site == "MA":
-                                                prompt_text = prompt_text.replace(placeholder, str(size_row["ma_move_size"]))
-                                            else:
-                                                prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
+                                            prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
                                         else:
                                             prompt_text = prompt_text.replace(placeholder, safe_value)  # fallback
                                     else:
