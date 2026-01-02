@@ -743,16 +743,6 @@ async def handle_message():
                                                 prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
                                         else:
                                             prompt_text = prompt_text.replace(placeholder, safe_value)  # fallback
-                                    elif key == "lead_status" and value:
-                                        prompt_text = prompt_text.replace("[lead_status]", safe_value)
-                                    elif key == "payment_link" and value:
-                                        prompt_text = prompt_text.replace("[payment_link]", safe_value)
-                                    elif key == "invoice_link" and value:
-                                        prompt_text = prompt_text.replace("[invoice_link]", safe_value)
-                                    elif key == "inventory_link" and value:
-                                        prompt_text = prompt_text.replace("[inventory_link]", safe_value)
-                                    elif key == "booking_id" and value:
-                                        prompt_text = prompt_text.replace("[booking_id]", safe_value)
                                     else:
                                         prompt_text = prompt_text.replace(placeholder, safe_value)
                         except (ValueError, TypeError):
