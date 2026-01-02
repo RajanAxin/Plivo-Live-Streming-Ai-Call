@@ -584,33 +584,35 @@ async def test():
                 'timezone_id': lead_data.get('t_timezone', 0) if lead_data else 0
             })
 
-
-            if to_number == "12176186806":
-                if lead_data and lead_data.get('phone') == "6025298353":
-                    url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
-                else:
-                    url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+            if lead_data.get('site') == "MA":
+                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), "voice message", lead_data.get('t_call_id'), lead_data.get('lead_phone'), "")
             else:
-                    print("to_number is not 12176186806")
-                    if lead_data and lead_data.get('phone') in ("6025298353", "6263216095"):
-                        url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                if to_number == "12176186806":
+                    if lead_data and lead_data.get('phone') == "6025298353":
+                        url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
                     else:
-                        url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
-            
-            # Make the API call
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        url,
-                        headers={'Content-Type': 'application/json'},
-                        data=para,
-                        timeout=aiohttp.ClientTimeout(total=30)
-                    ) as response:
-                        response_text = await response.text()
-                        print(f"callit log curl_api_call URL: {url} === res: {response_text}")
-                        
-            except Exception as e:
-                print(f"Error making API call: {e}")
+                        url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+                else:
+                        print("to_number is not 12176186806")
+                        if lead_data and lead_data.get('phone') in ("6025298353", "6263216095"):
+                            url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                        else:
+                            url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+
+                # Make the API call
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            url,
+                            headers={'Content-Type': 'application/json'},
+                            data=para,
+                            timeout=aiohttp.ClientTimeout(total=30)
+                        ) as response:
+                            response_text = await response.text()
+                            print(f"callit log curl_api_call URL: {url} === res: {response_text}")
+
+                except Exception as e:
+                    print(f"Error making API call: {e}")
         else:
             print("Missing required parameters for call transfer")
 
@@ -1880,6 +1882,7 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
         "message": args.get('payment_link', ''),
         "type": "text"
     }
+    
     
     api_success = await sms_send_or_not_fun(
         conversation_state.get('site'), 
