@@ -1613,8 +1613,8 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
                     ai_greeting_instruction = "no agent available at this moment"
                     await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
                 else:
-                    transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
-                    print(f'Transfer Result: {transfer_result}')
+                    #transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "transfer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
                     ai_greeting_instruction = "call transfer done to the agent"
         else:
             await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
