@@ -729,17 +729,32 @@ async def handle_message():
                             lead_data = cursor.fetchone()
                             if lead_data:
                                 prompt_text = prompt_text.replace("[brand_name]", brand_name)
+
+                                site = lead_data.get("site")
+
                                 for key, value in lead_data.items():
                                     placeholder = f"[lead_{key}]"
                                     safe_value = "" if value is None else str(value)
-                                    # Special handling for move_size placeholder
+
                                     if key == "move_size" and value:
-                                        cursor.execute("SELECT move_size FROM mst_move_size WHERE move_size_id = %s", (value,))
+                                        cursor.execute(
+                                            "SELECT move_size, ma_move_size FROM mst_move_size WHERE move_size_id = %s",
+                                            (value,)
+                                        )
                                         size_row = cursor.fetchone()
+
                                         if size_row:
-                                            prompt_text = prompt_text.replace(placeholder, str(size_row["move_size"]))
+                                            move_size_value = (
+                                                size_row["ma_move_size"]
+                                                if site == "MA"
+                                                else size_row["move_size"]
+                                            )
+                                            prompt_text = prompt_text.replace(
+                                                placeholder,
+                                                str(move_size_value or safe_value)
+                                            )
                                         else:
-                                            prompt_text = prompt_text.replace(placeholder, safe_value)  # fallback
+                                            prompt_text = prompt_text.replace(placeholder, safe_value)
                                     else:
                                         prompt_text = prompt_text.replace(placeholder, safe_value)
                         except (ValueError, TypeError):
