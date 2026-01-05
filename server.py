@@ -503,7 +503,7 @@ async def home():
     f"&amp;site={site}"
     f"&amp;server={server}"
     f"&amp;lead_type={lead_type}"
-    f"&amp;lead_status={lead_status}"
+    f"&amp;lead_status={quote(lead_status)}"
     f"&amp;agent_transfer={agent_transfer}"
     f"&amp;lead_numbers_id={lead_numbers_id}"
     f"&amp;lead_data_result={lead_data_result}"
