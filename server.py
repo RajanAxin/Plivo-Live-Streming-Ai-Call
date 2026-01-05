@@ -468,6 +468,7 @@ async def home():
     t_call_id = lead_data['t_call_id'] if lead_data else 0
     agent_transfer = lead_data['agent_transfer'] if lead_data else 0
     lead_type = lead_data['type'] if lead_data else 'outbound'
+    lead_status = lead_data['lead_status'] if lead_data else None
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
     lead_numbers_id = lead_data.get('lead_numbers_id')
@@ -479,6 +480,7 @@ async def home():
     print(f"agent_transfer: {agent_transfer if agent_transfer else 'N/A'}")
     print(f"t_call_id: {t_call_id if t_call_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
+    print(f"lead_status: {lead_status if lead_status else 'N/A'}")
     print(f"lead_numbers_id: {lead_numbers_id if lead_numbers_id else 'N/A'}")
     print(f"lead_data_result: {lead_data_result if lead_data_result else 'N/A'}")
     
@@ -501,6 +503,7 @@ async def home():
     f"&amp;site={site}"
     f"&amp;server={server}"
     f"&amp;lead_type={lead_type}"
+    f"&amp;lead_status={lead_status}"
     f"&amp;agent_transfer={agent_transfer}"
     f"&amp;lead_numbers_id={lead_numbers_id}"
     f"&amp;lead_data_result={lead_data_result}"
@@ -671,6 +674,7 @@ async def handle_message():
     server = websocket.args.get('server', 'unknown')
     agent_transfer = websocket.args.get('agent_transfer', 'unknown')
     lead_type = websocket.args.get('lead_type', 'unknown')
+    lead_status = websocket.args.get('lead_status', 'unknown')
     lead_numbers_id = websocket.args.get('lead_numbers_id', 'unknown')
     lead_data_result = websocket.args.get('lead_data_result', 'unknown')
     print('lead_id', lead_id)
@@ -684,6 +688,8 @@ async def handle_message():
     print('ai_agent_name', ai_agent_name)
     print('lead_phone', lead_phone)
     print('lead_type', lead_type)
+    print('lead_status', lead_status)
+
     # Initialize conversation state with lock for active_response
     conversation_state = {
         'in_ai_response': False,
@@ -695,6 +701,7 @@ async def handle_message():
         't_call_id': t_call_id,
         'agent_transfer': agent_transfer,
         'lead_type': lead_type,
+        'lead_status': lead_status,
         'site': site,
         'server': server,
         'call_uuid': call_uuid,
@@ -1853,22 +1860,41 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
         payload
     )
     print(f"[TRANSFER] API call result: {api_success}")
-    await openai_ws.send(json.dumps({
-        "type": "conversation.item.create",
-        "item": {
-            "id": item_id,
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": json.dumps({"status": "Inventory link sent"})
-        }
-    }))
-    await openai_ws.send(json.dumps({
-        "type": "response.create",
-        "response": {
-            "modalities": ["audio", "text"],
-            "instructions": "The inventory link has been sent successfully."
-        }
-    }))
+
+    if(conversation_state.get('lead_status') == 'quote sent' or conversation_state.get('lead_status') == 'not booked' or args.get('inventory_link', '') == ''):
+        await openai_ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "id": item_id,
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps({"status": "Inventory link sent"})
+            }
+        }))
+        await openai_ws.send(json.dumps({
+            "type": "response.create",
+            "response": {
+                "modalities": ["audio", "text"],
+                "instructions": "The inventory link has been sent successfully."
+            }
+        }))
+    else:
+        await openai_ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "id": item_id,
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps({"status": "We are unable to send an inventory link right now."})
+            }
+        }))
+        await openai_ws.send(json.dumps({
+            "type": "response.create",
+            "response": {
+                "modalities": ["audio", "text"],
+                "instructions": "We can't send you an inventory link right now. i've noted this and our representative will update you shortly."
+            }
+        }))
     
 async def send_payment_link(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Sending Payment Link ===")
@@ -1882,7 +1908,7 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
         "type": "text"
     }
     print('lead type:-',conversation_state.get('lead_type'))
-    if(conversation_state.get('lead_type') == 'quote sent' or args.get('payment_link', '') == ''):
+    if(conversation_state.get('lead_status') == 'quote sent' or args.get('payment_link', '') == ''):
         print("[PAYMENT LINK] No payment link provided, skipping SMS send.")
         await openai_ws.send(json.dumps({
             "type": "conversation.item.create",
@@ -1934,7 +1960,7 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
         "type": "text"
     }
     print('lead type:-',conversation_state.get('lead_type'))
-    if(conversation_state.get('lead_type') == 'booked' or args.get('invoice_link', '') == ''):
+    if(conversation_state.get('lead_status') == 'booked' or args.get('invoice_link', '') == ''):
         print("[INVOICE LINK] No invoice link provided, skipping SMS send.")
         await openai_ws.send(json.dumps({
             "type": "conversation.item.create",
