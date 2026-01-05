@@ -657,7 +657,7 @@ async def test():
             })
 
             if lead_data.get('site') == "MA":
-                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), "voice message", lead_data.get('t_call_id'), lead_data.get('lead_phone'), "")
+                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'),lead_data.get('type'), "voice message", lead_data.get('t_call_id'), lead_data.get('lead_phone'), "")
             else:
                 if to_number == "12176186806":
                     if lead_data and lead_data.get('phone') == "6025298353":
@@ -1700,13 +1700,13 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         if args.get("disposition") == 'transfer':
                 if conversation_state['agent_transfer'] == None:
                     ai_greeting_instruction = "no agent available at this moment"
-                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state['lead_type'], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
                 else:
                     #transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
-                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "transfer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state['lead_type'], "transfer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
                     ai_greeting_instruction = "call transfer done to the agent"
         else:
-            await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+            await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state['lead_type'], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
 
 
@@ -2802,7 +2802,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
 
-async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_id, lead_phone, follow_up_time):
+async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_val, t_call_id, lead_phone, follow_up_time):
     try:
 
         if disposition_val == 'voice message':
@@ -2836,12 +2836,18 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
 
         params = {
                 "lead_id": lead_id,
-                "lead_ob_call_id": t_call_id,
+                "lead_ob_call_id": "",
                 "disposition": disposition_val,
                 "lead_phone": lead_phone,
                 "quote_sent_date":"",
                 "lead_IB_call_id":""
             }
+        
+        if lead_type == 'inbound':
+             params["lead_ib_call_id"] = t_call_id
+        else:
+             params["lead_ob_call_id"] = t_call_id
+        
         if disposition_val == 'follow up':
             print('followup time:',follow_up_time)
             #dt = datetime.fromisoformat(follow_up_time)
