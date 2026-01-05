@@ -181,6 +181,44 @@ def segment_speakers(transcript_text: str):
     return response.choices[0].message.content
 
 
+def ma_lead_segment_speakers(transcript_text: str):
+    """Ask GPT to analyze entire transcript and return final disposition only."""
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a call disposition classifier for MA leads."},
+            {"role": "user", "content": f"""
+            Analyze the following call transcript and determine the correct disposition.
+            Do NOT split into speakers. Use the entire transcript as-is.
+
+            Transcript:
+            {transcript_text}
+
+            Possible dispositions:
+            - voice message
+            - DNC
+            - wrong phone
+            - follow up
+            - booked
+            - booked with others
+            - disconnected
+            - no disposition
+            - No Coverage
+            - hang up
+            - Quote Sent
+            - transfer
+
+            Output ONLY valid JSON in the following format:
+            {{
+                "disposition": "<one_of_the_above>",
+                "transcript_text": "{transcript_text}"
+            }}
+            """}
+        ],
+        response_format={"type": "json_object"}  # ensure valid JSON
+    )
+    return response.choices[0].message.content
+
 @app.get("/disposition_process")
 def disposition_process():
     try:
@@ -193,6 +231,29 @@ def disposition_process():
         file_path = download_file(mp3_url)
         text = transcribe(file_path)
         result_json = segment_speakers(text)
+        os.remove(file_path)
+        # Parse the JSON string to a Python dictionary
+        result_dict = json.loads(result_json)
+        
+        # Return the parsed dictionary
+        return result_dict
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/ma_lead_disposition_process")
+def ma_lead_disposition_process():
+    try:
+        # Get the mp3_url from query parameters
+        mp3_url = request.args.get('mp3_url')
+        
+        if not mp3_url:
+            return {"error": "mp3_url parameter is required"}, 400
+        
+        file_path = download_file(mp3_url)
+        text = transcribe(file_path)
+        result_json = ma_lead_segment_speakers(text)
         os.remove(file_path)
         # Parse the JSON string to a Python dictionary
         result_dict = json.loads(result_json)
