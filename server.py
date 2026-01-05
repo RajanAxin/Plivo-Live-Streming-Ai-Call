@@ -468,7 +468,7 @@ async def home():
     t_call_id = lead_data['t_call_id'] if lead_data else 0
     agent_transfer = lead_data['agent_transfer'] if lead_data else 0
     lead_type = lead_data['type'] if lead_data else 'outbound'
-    lead_status = lead_data['lead_status'] if lead_data else None
+    lead_status = lead_data['lead_status'] if lead_data else 0
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
     lead_numbers_id = lead_data.get('lead_numbers_id')
