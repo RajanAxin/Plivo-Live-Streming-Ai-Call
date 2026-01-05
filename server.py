@@ -1881,8 +1881,8 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
         "message": args.get('payment_link', ''),
         "type": "text"
     }
-    
-    if(conversation_state.get('lead_type') == 'quote sent'):
+    print('lead type:-',conversation_state.get('lead_type'))
+    if(conversation_state.get('lead_type') == 'quote sent' or args.get('payment_link', '') == ''):
         print("[PAYMENT LINK] No payment link provided, skipping SMS send.")
         await openai_ws.send(json.dumps({
             "type": "conversation.item.create",
@@ -1933,7 +1933,7 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
         "message": args.get('invoice_link', ''),
         "type": "text"
     }
-    
+    print('lead type:-',conversation_state.get('lead_type'))
     if(conversation_state.get('lead_type') == 'booked'):
         print("[INVOICE LINK] No invoice link provided, skipping SMS send.")
         await openai_ws.send(json.dumps({
