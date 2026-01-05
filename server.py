@@ -468,10 +468,10 @@ async def home():
     t_call_id = lead_data['t_call_id'] if lead_data else 0
     agent_transfer = lead_data['agent_transfer'] if lead_data else 0
     lead_type = lead_data['type'] if lead_data else 'outbound'
-    lead_status = lead_data['lead_status'] if lead_data else 'blank'
-    payment_link = lead_data.get('payment_link', '') if lead_data else 'blank'
-    invoice_link = lead_data.get('invoice_link', '') if lead_data else 'blank'
-    inventory_link = lead_data.get('inventory_link', '') if lead_data else 'blank'
+    lead_status = (lead_data.get('lead_status') if lead_data else None) or 'blank'
+    payment_link = (lead_data.get('payment_link') if lead_data else None) or 'blank'
+    invoice_link = (lead_data.get('invoice_link') if lead_data else None) or 'blank'
+    inventory_link = (lead_data.get('inventory_link') if lead_data else None) or 'blank'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
     lead_numbers_id = lead_data.get('lead_numbers_id')
