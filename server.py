@@ -2793,9 +2793,11 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
             #current_hour = est_time.hour
             dt = datetime.fromisoformat(follow_up_time)
             formatted_time = dt.strftime("%Y-%m-%d %I:%M %p")
+            quote_time = dt.strftime("%Y-%m-%d %H:%M")
             print('converted followup time:',formatted_time)
+            print('converted quote time:',quote_time)
             params["follow_up_date"] = formatted_time
-            params["quote_sent_date"] = follow_up_time
+            params["quote_sent_date"] = quote_time
             print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
             print('params',params)
         # Build the new API URL and payload for LeadDial
