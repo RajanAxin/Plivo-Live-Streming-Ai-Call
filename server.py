@@ -1934,7 +1934,7 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
         "type": "text"
     }
     print('lead type:-',conversation_state.get('lead_type'))
-    if(conversation_state.get('lead_type') == 'booked'):
+    if(conversation_state.get('lead_type') == 'booked' or args.get('invoice_link', '') == ''):
         print("[INVOICE LINK] No invoice link provided, skipping SMS send.")
         await openai_ws.send(json.dumps({
             "type": "conversation.item.create",
