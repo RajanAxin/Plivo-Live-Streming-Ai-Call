@@ -2791,7 +2791,10 @@ async def set_ma_lead_dispostion_status_update(lead_id, disposition_val, t_call_
             #est = pytz.timezone("America/New_York")
             #est_time = datetime.now(est)
             #current_hour = est_time.hour
-            params["follow_up_date"] = follow_up_time
+            dt = datetime.fromisoformat(follow_up_time)
+            formatted_time = dt.strftime("%Y-%m-%d %I:%M %p")
+            print('converted followup time:',formatted_time)
+            params["follow_up_date"] = formatted_time
             params["quote_sent_date"] = follow_up_time
             print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
             print('params',params)
