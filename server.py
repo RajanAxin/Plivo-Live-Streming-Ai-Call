@@ -469,6 +469,9 @@ async def home():
     agent_transfer = lead_data['agent_transfer'] if lead_data else 0
     lead_type = lead_data['type'] if lead_data else 'outbound'
     lead_status = lead_data['lead_status'] if lead_data else 0
+    payment_link = lead_data.get('payment_link', '') if lead_data else 'blank'
+    invoice_link = lead_data.get('invoice_link', '') if lead_data else 'blank'
+    inventory_link = lead_data.get('inventory_link', '') if lead_data else 'blank'
     site = lead_data['site'] if lead_data else 'PM'
     server = lead_data['server'] if lead_data else 'Stag'
     lead_numbers_id = lead_data.get('lead_numbers_id')
@@ -480,7 +483,9 @@ async def home():
     print(f"agent_transfer: {agent_transfer if agent_transfer else 'N/A'}")
     print(f"t_call_id: {t_call_id if t_call_id else 'N/A'}")
     print(f"lead_type: {lead_type if lead_type else 'N/A'}")
-    print(f"lead_status: {lead_status if lead_status else 'N/A'}")
+    print(f"payment_link: {payment_link if payment_link else 'N/A'}")
+    print(f"invoice_link: {invoice_link if invoice_link else 'N/A'}")
+    print(f"inventory_link: {inventory_link if inventory_link else 'N/A'}")
     print(f"lead_numbers_id: {lead_numbers_id if lead_numbers_id else 'N/A'}")
     print(f"lead_data_result: {lead_data_result if lead_data_result else 'N/A'}")
     
@@ -504,6 +509,9 @@ async def home():
     f"&amp;server={server}"
     f"&amp;lead_type={lead_type}"
     f"&amp;lead_status={quote(lead_status)}"
+    f"&amp;payment_link={quote(payment_link)}"
+    f"&amp;invoice_link={quote(invoice_link)}"
+    f"&amp;inventory_link={quote(inventory_link)}"
     f"&amp;agent_transfer={agent_transfer}"
     f"&amp;lead_numbers_id={lead_numbers_id}"
     f"&amp;lead_data_result={lead_data_result}"
@@ -675,6 +683,9 @@ async def handle_message():
     agent_transfer = websocket.args.get('agent_transfer', 'unknown')
     lead_type = websocket.args.get('lead_type', 'unknown')
     lead_status = websocket.args.get('lead_status', 'unknown')
+    payment_link = websocket.args.get('payment_link', 'unknown')
+    invoice_link = websocket.args.get('invoice_link', 'unknown')
+    inventory_link = websocket.args.get('inventory_link', 'unknown')
     lead_numbers_id = websocket.args.get('lead_numbers_id', 'unknown')
     lead_data_result = websocket.args.get('lead_data_result', 'unknown')
     print('lead_id', lead_id)
@@ -702,6 +713,9 @@ async def handle_message():
         'agent_transfer': agent_transfer,
         'lead_type': lead_type,
         'lead_status': lead_status,
+        'payment_link': payment_link,
+        'invoice_link': invoice_link,
+        'inventory_link': inventory_link,
         'site': site,
         'server': server,
         'call_uuid': call_uuid,
@@ -1850,7 +1864,7 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
 
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
-        "message": args.get('inventory_link', ''),
+        "message": conversation_state.get('inventory_link'),
         "type": "text"
     }
 
@@ -1905,11 +1919,11 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
 
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
-        "message": args.get('payment_link', ''),
+        "message": conversation_state.get('payment_link'),
         "type": "text"
     }
     print('lead status:-',conversation_state.get('lead_status'))
-    if(conversation_state.get('lead_status') == 'quote sent' and args.get('payment_link', '') != ''):
+    if(conversation_state.get('lead_status') == 'quote sent' and conversation_state.get('payment_link') != 'blank'):
 
         api_success = await sms_send_or_not_fun(
             conversation_state.get('site'), 
@@ -1958,11 +1972,11 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
     
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
-        "message": args.get('invoice_link', ''),
+        "message": conversation_state.get('invoice_link'),
         "type": "text"
     }
     print('lead status:-',conversation_state.get('lead_status'))
-    if(conversation_state.get('lead_status') == 'booked' and args.get('invoice_link', '') != ''):
+    if(conversation_state.get('lead_status') == 'booked' and conversation_state.get('invoice_link') != 'blank'):
 
         api_success = await sms_send_or_not_fun(
             conversation_state.get('site'), 
