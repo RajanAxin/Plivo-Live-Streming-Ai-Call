@@ -657,7 +657,7 @@ async def test():
             })
 
             if lead_data.get('site') == "MA":
-                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('lead_phone'), "")
+                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('lead_phone'), lead_data.get('server'))
             else:
                 if to_number == "12176186806":
                     if lead_data and lead_data.get('phone') == "6025298353":
@@ -1700,13 +1700,13 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         if args.get("disposition") == 'transfer':
                 if conversation_state['agent_transfer'] == None:
                     ai_greeting_instruction = "no agent available at this moment"
-                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
                 else:
                     #transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
-                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "transfer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], "transfer", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
                     ai_greeting_instruction = "call transfer done to the agent"
         else:
-            await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state["lead_type"], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time)
+            await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state["lead_type"], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
 
 
@@ -2188,7 +2188,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 url = "https://snapit:mysnapit22@zapstage.snapit.software/api/updateailead"
         elif site == "MA":
             if server == "Prod":
-                url = "https://malead:ma2024@ma.snapit.software/api/updateailead"
+                url = "https://ma.leaddial.co/api/tenant/lead/update-customer-info"
             else:
                 url = "https://developer.leaddial.co/developer/api/tenant/lead/update-customer-info"
         else:
@@ -2802,7 +2802,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
 
-async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_val, t_call_id, lead_phone, follow_up_time):
+async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_val, t_call_id, lead_phone, follow_up_time, server):
     try:
 
         if disposition_val == 'voice message':
@@ -2868,7 +2868,10 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
         print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         print('params',params)
         # Build the new API URL and payload for LeadDial
-        api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
+        if server == "Prod":
+            api_url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+        else:
+            api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai-stage"
         
         
         # Send request to the new API
