@@ -1884,7 +1884,10 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
                     "id": item_id,
                     "type": "function_call_output",
                     "call_id": call_id,
-                    "output": json.dumps(args)
+                    "output": json.dumps({
+                    "status": "success",
+                        "updated_fields": list(update_data.keys())
+                    })
                 }
             }))
 
