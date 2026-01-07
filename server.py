@@ -1891,16 +1891,27 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
                 }
             }))
 
-            await openai_ws.send(json.dumps({
-                "type": "response.create",
-                "response": {
-                    "modalities": ["audio", "text"],
-                    "instructions": (
-                        "Continue the conversation with the caller incorporating the updated lead details: "
-                        + json.dumps(args)
-                    )
-                }
-            }))
+            if(conversation_state.get('site','') == 'MA'):
+                await openai_ws.send(json.dumps({
+                    "type": "response.create",
+                    "response": {
+                      "instructions": (
+                        "Lead details were updated successfully. "
+                        "Now call add_lead_note with a short summary of what was updated."
+                      )
+                    }
+                }))
+            else:
+                await openai_ws.send(json.dumps({
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["audio", "text"],
+                        "instructions": (
+                            "Continue the conversation with the caller incorporating the updated lead details: "
+                            + json.dumps(args)
+                        )
+                    }
+                }))
             print("[LEAD_UPDATE] Sent function output and requested model response.")
             return True
         else:
