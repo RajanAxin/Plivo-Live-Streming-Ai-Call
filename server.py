@@ -2112,6 +2112,7 @@ async def add_lead_note(openai_ws, args, item_id, call_id, conversation_state):
         payload
     )
     print(f"[TRANSFER] API call result: {api_success}")
+    print(f"[TRANSFER] payload: {payload}")
 
     # Send response back to OpenAI
     await openai_ws.send(json.dumps({
@@ -2153,6 +2154,7 @@ async def sms_send_or_not_fun(site, server, payload):
     # Determine which URL to use based on server
     if server == "Prod":
         url = "https://ma.leaddial.co/api/tenant/lead/send-customer-sms"
+        
     else:
         url = "https://developer.leaddial.co/developer/api/tenant/lead/send-customer-sms"
     
