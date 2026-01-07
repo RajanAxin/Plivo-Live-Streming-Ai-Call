@@ -2138,7 +2138,7 @@ async def sms_send_or_not_fun(site, server, payload):
     
     # Determine which URL to use based on server
     if server == "Prod":
-        url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
+        url = "https://ma.leaddial.co/api/tenant/lead/send-customer-sms"
     else:
         url = "https://developer.leaddial.co/developer/api/tenant/lead/send-customer-sms"
     
