@@ -1940,6 +1940,8 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": conversation_state.get('inventory_link'),
+        "call_type": conversation_state.get('lead_type'),
+        "call_id": conversation_state.get('t_call_id'),
         "type": "text",
         "com_type": "call"
     }
@@ -1996,6 +1998,8 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": conversation_state.get('payment_link'),
+        "call_type": conversation_state.get('lead_type'),
+        "call_id": conversation_state.get('t_call_id'),
         "type": "text",
         "com_type": "call"
     }
@@ -2050,6 +2054,8 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": conversation_state.get('invoice_link'),
+        "call_type": conversation_state.get('lead_type'),
+        "call_id": conversation_state.get('t_call_id'),
         "type": "text",
         "com_type": "call"
     }
@@ -2106,6 +2112,8 @@ async def add_lead_note(openai_ws, args, item_id, call_id, conversation_state):
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": args.get('note', ''),
+        "call_type": conversation_state.get('lead_type'),
+        "call_id": conversation_state.get('t_call_id'),
         "type": "note",
         "com_type": "call"
     }
