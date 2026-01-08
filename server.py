@@ -1940,7 +1940,8 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": conversation_state.get('inventory_link'),
-        "type": "text"
+        "type": "text",
+        "com_type": "call"
     }
 
     if(conversation_state.get('lead_status') == 'quote sent' or conversation_state.get('lead_status') == 'not booked'):
@@ -1995,7 +1996,8 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": conversation_state.get('payment_link'),
-        "type": "text"
+        "type": "text",
+        "com_type": "call"
     }
     print('lead status:-',conversation_state.get('lead_status'))
     if(conversation_state.get('lead_status') == 'quote sent' and conversation_state.get('payment_link') != 'blank'):
@@ -2048,7 +2050,8 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": conversation_state.get('invoice_link'),
-        "type": "text"
+        "type": "text",
+        "com_type": "call"
     }
     print('lead status:-',conversation_state.get('lead_status'))
     if(conversation_state.get('lead_status') == 'booked' and conversation_state.get('invoice_link') != 'blank'):
@@ -2103,7 +2106,8 @@ async def add_lead_note(openai_ws, args, item_id, call_id, conversation_state):
     payload = {
         "lead_numbers_id": conversation_state.get('lead_numbers_id'),
         "message": args.get('note', ''),
-        "type": "note"
+        "type": "note",
+        "com_type": "call"
     }
     
     api_success = await sms_send_or_not_fun(
