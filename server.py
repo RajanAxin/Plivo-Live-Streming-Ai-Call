@@ -2896,7 +2896,6 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
             params["follow_up_date"] = formatted_time
             params["quote_sent_date"] = quote_time
         print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
-        print('params',params)
         # Build the new API URL and payload for LeadDial
         if server == "Prod":
             api_url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
@@ -2919,10 +2918,10 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
             try:
                 cursor = conn.cursor()
                 insert_query = """
-                    INSERT INTO dispotion_api_call_logs (lead_id, api_url, api_response, dispotion)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO dispotion_api_call_logs (lead_id, api_url, api_response, dispotion,api_params)
+                    VALUES (%s, %s, %s, %s,%s)
                 """
-                cursor.execute(insert_query, (lead_id, api_url, response, disposition_val))
+                cursor.execute(insert_query, (lead_id, api_url, response, disposition_val,params))
                 conn.commit()
                 print(f"[LOG] API call stored for lead {lead_id}")
             except Exception as db_error:
