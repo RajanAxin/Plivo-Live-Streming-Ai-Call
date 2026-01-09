@@ -14,6 +14,7 @@ from urllib.parse import quote, urlencode
 from dotenv import load_dotenv
 from dateutil import parser
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import pytz
 import os
 
@@ -2889,9 +2890,14 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
             #est = pytz.timezone("America/New_York")
             #est_time = datetime.now(est)
             #current_hour = est_time.hour
-            dt = datetime.fromisoformat(follow_up_time)
-            formatted_time = dt.strftime("%Y-%m-%d %I:%M %p")
-            quote_time = dt.strftime("%Y-%m-%d %H:%M")
+            if follow_up_time == '':
+                dt = datetime.now(ZoneInfo("America/New_York")) + timedelta(hours=2)
+                formatted_time = dt.strftime("%Y-%m-%d %I:%M %p")  # 12-hour format with AM/PM
+                quote_time = dt.strftime("%Y-%m-%d %H:%M")         # 24-hour format
+            else:
+                dt = datetime.fromisoformat(follow_up_time)
+                formatted_time = dt.strftime("%Y-%m-%d %I:%M %p")
+                quote_time = dt.strftime("%Y-%m-%d %H:%M")
             print('converted followup time:',formatted_time)
             print('converted quote time:',quote_time)
             params["follow_up_date"] = formatted_time
