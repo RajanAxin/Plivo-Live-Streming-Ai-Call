@@ -193,7 +193,7 @@ def ma_lead_segment_speakers(transcript_text: str):
             Analyze the conversation and select the exact matching disposition using ONLY the allowed dispositions below.
 
             RULES (highest priority first):
-            
+
             1. Customer says they booked with YOUR company / already scheduled with you → booked
             2. Customer says they already booked or hired movers elsewhere / we're set → booked with others
             3. Customer booked U-Haul, Penske, Ryder, Budget, or rented a truck → booked with others
@@ -210,10 +210,10 @@ def ma_lead_segment_speakers(transcript_text: str):
             14. Call transferred to mover or truck rental → transfer
             15. Call never connected → disconnected
             16. Normal moving conversation / questions answered → no disposition
-            
+
             Transcript:
             {transcript_text}
-            
+
             Possible dispositions (MUST match exactly):
             - voice message
             - DNC
@@ -677,6 +677,7 @@ async def test():
             })
 
             if lead_data.get('site') == "MA":
+
                 await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('lead_phone'), lead_data.get('server'))
             else:
                 if to_number == "12176186806":
@@ -1722,6 +1723,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
                     ai_greeting_instruction = "Currently agents are not available at this moment i schedule your call for follow up"
                     await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
                 else:
+                    await asyncio.sleep(3)
                     #transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
                     await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state['lead_type'], "transfer", conversation_state['t_call_id'],conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
                     ai_greeting_instruction = "call transfer done to the agent"
