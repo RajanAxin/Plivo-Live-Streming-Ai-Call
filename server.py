@@ -2868,11 +2868,13 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
                 "disposition": disposition_val,
                 "lead_phone": lead_phone,
                 "quote_sent_date":"",
+                "lead_ib_call_id":"",
                 "lead_IB_call_id":""
             }
 
         if lead_type == 'inbound':
             params["lead_IB_call_id"] = t_call_id
+            params["lead_ib_call_id"] = t_call_id
         else:
             params["lead_ob_call_id"] = t_call_id
 
