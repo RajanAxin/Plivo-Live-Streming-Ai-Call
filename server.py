@@ -189,13 +189,32 @@ def ma_lead_segment_speakers(transcript_text: str):
         messages=[
             {"role": "system", "content": "You are a call disposition classifier for MA leads."},
             {"role": "user", "content": f"""
-            Analyze the following call transcript and determine the correct disposition.
-            Do NOT split into speakers. Use the entire transcript as-is.
+            You are a call disposition classifier for a moving company.
+            Analyze the conversation and select the exact matching disposition using ONLY the allowed dispositions below.
 
+            RULES (highest priority first):
+            
+            1. Customer says they booked with YOUR company / already scheduled with you → booked
+            2. Customer says they already booked or hired movers elsewhere / we're set → booked with others
+            3. Customer booked U-Haul, Penske, Ryder, Budget, or rented a truck → booked with others
+            4. Customer booked PODS, Pack Rat, or container service → booked with others
+            5. Customer says not interested / don't need movers / not looking → hang up
+            6. Wrong number / wrong person / not me / no idea → wrong phone
+            7. Do not call / stop calling / remove me → DNC
+            8. Buyer not available / no buyer available → no disposition
+            9. Human agent requested between 6PM–8AM EST → follow up
+            10. Call me back / tomorrow / later / next week → follow up
+            11. Asked to leave voicemail / message left → voice message
+            12. No answer / call disconnected before speaking → disconnected
+            13. Business line / office number / company phone → no disposition
+            14. Call transferred to mover or truck rental → transfer
+            15. Call never connected → disconnected
+            16. Normal moving conversation / questions answered → no disposition
+            
             Transcript:
             {transcript_text}
-
-            Possible dispositions:
+            
+            Possible dispositions (MUST match exactly):
             - voice message
             - DNC
             - wrong phone
