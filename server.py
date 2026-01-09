@@ -1700,7 +1700,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         if args.get("disposition") == 'transfer':
                 if conversation_state['agent_transfer'] == 'None':
                     print("agent not available-",conversation_state['agent_transfer'])
-                    ai_greeting_instruction = "no agent available at this moment"
+                    ai_greeting_instruction = "Currently agents are not available at this moment i schedule your call for follow up"
                     await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
                 else:
                     print("agent available-",conversation_state['agent_transfer'])
@@ -1713,6 +1713,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
 
 
     # 2️⃣ Tell the model to speak confirmation / error (audio + text)
+    print('ai_greeting_instruction',ai_greeting_instruction)
     await openai_ws.send(json.dumps({
         "type": "response.create",
         "response": {
