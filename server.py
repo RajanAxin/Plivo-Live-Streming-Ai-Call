@@ -189,27 +189,214 @@ def ma_lead_segment_speakers(transcript_text: str):
         messages=[
             {"role": "system", "content": "You are a call disposition classifier for MA leads."},
             {"role": "user", "content": f"""
-            You are a call disposition classifier for a moving company.
-            Analyze the conversation and select the exact matching disposition using ONLY the allowed dispositions below.
-
-            RULES (highest priority first):
-
-            1. Customer says they booked with YOUR company / already scheduled with you → booked
-            2. Customer says they already booked or hired movers elsewhere / we're set → booked with others
-            3. Customer booked U-Haul, Penske, Ryder, Budget, or rented a truck → booked with others
-            4. Customer booked PODS, Pack Rat, or container service → booked with others
-            5. Customer says not interested / don't need movers / not looking → hang up
-            6. Wrong number / wrong person / not me / no idea → wrong phone
-            7. Do not call / stop calling / remove me → DNC
-            8. Buyer not available / no buyer available → no disposition
-            9. Human agent requested between 6PM–8AM EST → follow up
-            10. Call me back / tomorrow / later / next week → follow up
-            11. Asked to leave voicemail / message left → voice message
-            12. No answer / call disconnected before speaking → disconnected
-            13. Business line / office number / company phone → no disposition
-            14. Call transferred to mover or truck rental → transfer
-            15. Call never connected → disconnected
-            16. Normal moving conversation / questions answered → no disposition
+            You are a deterministic disposition classifier.
+            Apply the rules strictly in order.
+            Once a rule matches, STOP and return ONLY the disposition value.
+            Do not explain reasoning.
+            
+            ────────────────────────────────
+            GLOBAL HARD STOPS (ABSOLUTE)
+            ────────────────────────────────
+            
+            RULE 0 — VOICEMAIL / IVR (HIGHEST PRIORITY)
+            If the transcript contains ONLY:
+            Voicemail greetings
+            Automated system / IVR messages
+            Prompts like “press 1”, “press 5”, “mailbox is full”
+            No live human response
+            
+            → disposition = voice message
+            STOP.
+            
+            ────────────────────────────────
+            COMPLIANCE & CONTACT BLOCKS
+            ────────────────────────────────
+            
+            RULE 1 — DO NOT CALL
+            If the customer explicitly says:
+            “Do not call”
+            “Stop calling”
+            “Remove my number”
+            “Take me off your list”
+            
+            → disposition = DNC
+            STOP.
+            
+            RULE 2 — WRONG PHONE
+            If the person says:
+            “Wrong number”
+            “This isn’t me”
+            “You have the wrong person”
+            “No one here by that name”
+            
+            → disposition = wrong phone
+            STOP.
+            
+            ────────────────────────────────
+            BOOKING OUTCOMES (DOMINANT)
+            ────────────────────────────────
+            
+            RULE 3 — BOOKED WITH YOUR COMPANY
+            If the customer clearly confirms:
+            “I already booked with you”
+            “We’re scheduled with Moving Ally”
+            “You guys are already handling it”
+            
+            → disposition = booked
+            STOP.
+            
+            RULE 4 — BOOKED WITH OTHERS
+            If the customer confirms booking or commitment with:
+            Another moving company
+            U-Haul, Penske, Ryder, Budget
+            PODS, Pack Rat, container services
+            Statements like “we already hired movers” or “we went with someone else”
+            
+            → disposition = booked with others
+            STOP.
+            
+            ────────────────────────────────
+            TRANSFER & ESCALATION
+            ────────────────────────────────
+            
+            RULE 5 — SUCCESSFUL TRANSFER
+            If the transcript clearly shows:
+            Call was transferred
+            Control handed to a live agent
+            “I’m connecting you now” AND transfer occurred
+            
+            → disposition = transfer
+            STOP.
+            
+            RULE 6 — TRANSFER ATTEMPT FAILED
+            If:
+            Transfer was attempted
+            Customer requested agent
+            But transfer did NOT occur (technical failure, cut off)
+            
+            → disposition = disconnected
+            STOP.
+            
+            ────────────────────────────────
+            QUOTE HANDLING
+            ────────────────────────────────
+            
+            RULE 7 — QUOTE SENT / ACKNOWLEDGED
+            If transcript clearly indicates:
+            Quote was provided or sent
+            Pricing was discussed AND quote issued
+            Customer acknowledges quote (“I’ll review it”)
+            
+            AND no booking occurred
+            
+            → disposition = Quote Sent
+            STOP.
+            
+            RULE 8 — QUOTE REQUEST BUT FAILED
+            If the customer asked for a quote AND:
+            Agent attempted to provide quote or transfer
+            Quote was NOT delivered
+            Transfer failed or call ended
+            
+            → disposition = no disposition
+            STOP.
+            
+            ────────────────────────────────
+            FOLLOW-UP LOGIC (STRICT)
+            ────────────────────────────────
+            
+            RULE 9 — EXPLICIT FOLLOW-UP REQUEST
+            If the CUSTOMER explicitly says:
+            “Call me back”
+            “Call me tomorrow”
+            “Reach me next week”
+            “Follow up later”
+            
+            → disposition = follow up
+            STOP.
+            
+            RULE 10 — AFTER-HOURS AGENT REQUEST
+            If:
+            Customer requests a live agent
+            Call is between 6 PM–8 AM EST
+            Customer agrees to callback
+            
+            → disposition = follow up
+            STOP.
+            
+            If customer does NOT agree → no disposition.
+            
+            ────────────────────────────────
+            INTEREST & INTENT
+            ────────────────────────────────
+            
+            RULE 11 — NOT INTERESTED
+            If customer:
+            Is wasting time
+            Says “just browsing”, “just curious”
+            Says “not interested”
+            Says “don’t need movers”
+            Clearly shows no intent to proceed
+            
+            → disposition = not interested
+            STOP.
+            
+            ────────────────────────────────
+            CALL TERMINATION TYPES
+            ────────────────────────────────
+            
+            RULE 12 — CUSTOMER HUNG UP
+            If transcript shows:
+            Customer intentionally ends call
+            Abrupt hang-up after refusal or frustration
+            
+            → disposition = hang up
+            STOP.
+            
+            RULE 13 — DISCONNECTED
+            If call ends due to:
+            Network drop
+            Sudden silence
+            Call cut off without intent
+            
+            → disposition = disconnected
+            STOP.
+            
+            RULE 14 — NO COVERAGE
+            If transcript includes:
+            “Out of coverage”
+            “Number unreachable”
+            Carrier error messages
+            
+            → disposition = No Coverage
+            STOP.
+            
+            ────────────────────────────────
+            NON-CONSUMER / EDGE CASES
+            ────────────────────────────────
+            
+            RULE 15 — BUSINESS / OFFICE LINE
+            If call reaches:
+            Business office
+            Company phone
+            Front desk / receptionist
+            Non-residential number
+            
+            → disposition = no disposition
+            STOP.
+            
+            ────────────────────────────────
+            LAST RESORT
+            ────────────────────────────────
+            
+            RULE 16 — NORMAL CONVERSATION
+            If:
+            Human answered
+            Questions were asked or answered
+            No booking, quote, refusal, follow-up, or transfer occurred
+            
+            → disposition = no disposition
+            STOP.
 
             Transcript:
             {transcript_text}
