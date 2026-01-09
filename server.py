@@ -2904,6 +2904,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
             api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai-stage"
         
         print(f"[DISPOSITION] params: {params}")
+        print(f"[DISPOSITION] url: {api_url}")
         # Send request to the new API
         response = requests.get(api_url, params=params)
         #api_response_text = response.msg if response.msg else str(response)
