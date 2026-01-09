@@ -2920,7 +2920,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
                     INSERT INTO dispotion_api_call_logs (lead_id, api_url, api_response, dispotion)
                     VALUES (%s, %s, %s, %s)
                 """
-                cursor.execute(insert_query, (lead_id, api_url, 'None', disposition_val))
+                cursor.execute(insert_query, (lead_id, api_url, response, disposition_val))
                 conn.commit()
                 print(f"[LOG] API call stored for lead {lead_id}")
             except Exception as db_error:
