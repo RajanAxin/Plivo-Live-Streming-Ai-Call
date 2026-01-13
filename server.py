@@ -471,7 +471,6 @@ def ma_lead_disposition_process():
     except Exception as e:
         return {"error": str(e)}
 
-
 # Initialize database table
 def initialize_database():
     conn = get_db_connection()
@@ -864,8 +863,8 @@ async def test():
             })
 
             if lead_data.get('site') == "MA":
-
-                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('lead_phone'), lead_data.get('server'))
+                follow_time = ''
+                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('phone'),follow_time, lead_data.get('server'))
             else:
                 if to_number == "12176186806":
                     if lead_data and lead_data.get('phone') == "6025298353":
