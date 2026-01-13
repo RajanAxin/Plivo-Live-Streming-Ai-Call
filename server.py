@@ -1906,16 +1906,29 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     if args.get("disposition") is not None:
         if args.get("disposition") == 'transfer':
                 if conversation_state['agent_transfer'] == 'None':
-                    ai_greeting_instruction = "Currently agents are not available at this moment i schedule your call for follow up"
+                    ai_greeting_instruction = (
+                        "Disposition detected as 'transfer'. "
+                        "Agents are not available. "
+                        "Call add_lead_note with a short summary, then inform the user "
+                        "that a follow-up has been scheduled."
+                    )
                     await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
                 else:
                     await asyncio.sleep(3)
                     #transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
                     await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state['lead_type'], "transfer", conversation_state['t_call_id'],conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
-                    ai_greeting_instruction = "call transfer done to the agent"
+                    ai_greeting_instruction = (
+                        "Disposition detected as 'transfer'. "
+                        "Call add_lead_note with a short summary, "
+                        "then inform the user that the call is being transferred."
+                    )
         else:
             await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state["lead_type"], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
-            ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
+            ai_greeting_instruction = (
+                f"Disposition '{args.get("disposition")}' has been saved. "
+                "Call add_lead_note with a short summary of this disposition, "
+                "then ask the user if they need anything else."
+            )
 
 
     # 2️⃣ Tell the model to speak confirmation / error (audio + text)
@@ -1927,6 +1940,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
             "instructions": ai_greeting_instruction
         }
     }))
+
 
 
 async def lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state):
