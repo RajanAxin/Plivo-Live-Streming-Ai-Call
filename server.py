@@ -862,9 +862,9 @@ async def test():
                 'timezone_id': lead_data.get('t_timezone', 0) if lead_data else 0
             })
 
-            if lead_data.get('site') == "MA":
+            if lead_data.get('site') in ("MA", "CW"):
                 follow_time = ''
-                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('phone'),follow_time, lead_data.get('server'))
+                await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('phone'),follow_time, lead_data.get('server'), lead_data.get('site'))
             else:
                 if to_number == "12176186806":
                     if lead_data and lead_data.get('phone') == "6025298353":
@@ -1037,7 +1037,7 @@ async def handle_message():
                                         if size_row:
                                             move_size_value = (
                                                 size_row["ma_move_size"]
-                                                if site == "MA"
+                                                if site not in ("MA", "CW")
                                                 else size_row["move_size"]
                                             )
                                             prompt_text = prompt_text.replace(
@@ -1907,14 +1907,14 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         if args.get("disposition") == 'transfer':
                 if conversation_state['agent_transfer'] == 'None':
                     ai_greeting_instruction = "Currently agents are not available at this moment i schedule your call for follow up"
-                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
                 else:
                     await asyncio.sleep(3)
                     #transfer_result = await transfer_ma_lead_call(conversation_state['agent_transfer'], conversation_state['lead_type'], conversation_state['t_call_id'])
-                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state['lead_type'], "transfer", conversation_state['t_call_id'],conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
+                    await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state['lead_type'], "transfer", conversation_state['t_call_id'],conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
                     ai_greeting_instruction = "call transfer done to the agent"
         else:
-            await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state["lead_type"], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'])
+            await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state["lead_type"], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
             ai_greeting_instruction = "I've saved the disposition. Is there anything else you'd like to do?"
 
 
@@ -2100,7 +2100,7 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
                 }
             }))
 
-            if(conversation_state.get('site','') == 'MA'):
+            if conversation_state.get('site', '') in ("MA", "CW"):
                 await openai_ws.send(json.dumps({
                     "type": "response.create",
                     "response": {
@@ -2368,16 +2368,23 @@ async def sms_send_or_not_fun(site, server, payload):
     print(f"[TRANSFER] Checking SMS send conditions: site={site}, server={server}")
     
     # If site is not MA, don't make API call
-    if site != "MA":
+    if site not in ("MA", "CW"):
         print(f"[TRANSFER] Site is not MA ({site}), skipping API call")
         return True
     
     # Determine which URL to use based on server
-    if server == "Prod":
-        url = "https://ma.leaddial.co/api/tenant/lead/send-customer-sms"
-        
+
+    if site == "MA":
+        if server == "Prod":
+            url = "https://ma.leaddial.co/api/tenant/lead/send-customer-sms"
+        else:
+            url = "https://developer.leaddial.co/developer/api/tenant/lead/send-customer-sms"
     else:
-        url = "https://developer.leaddial.co/developer/api/tenant/lead/send-customer-sms"
+        if server == "Prod":
+            url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+        else:
+            url = "https://usastage.leaddial.co/developer/api/tenant/lead/send-customer-sms"
+
     
     print(f"[TRANSFER] Using URL: {url}")
     
@@ -2428,6 +2435,11 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 url = "https://ma.leaddial.co/api/tenant/lead/update-customer-info"
             else:
                 url = "https://developer.leaddial.co/developer/api/tenant/lead/update-customer-info"
+        elif site == "CW":
+            if server == "Prod":
+                url = "https://ma.leaddial.co/api/tenant/lead/update-customer-info"
+            else:
+                url = "https://usastage.leaddial.co/developer/api/tenant/lead/update-customer-info"
         else:
             if server == "Prod":
                 url = "https://linkup:newlink_up34@linkup.software/api/updateailead"
@@ -3039,7 +3051,7 @@ async def dispostion_status_update(lead_id, disposition_val,follow_up_time):
         print(f"[DISPOSITION] Error updating lead disposition: {e}")
 
 
-async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_val, t_call_id, lead_phone, follow_up_time, server):
+async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_val, t_call_id, lead_phone, follow_up_time, server, site):
     try:
 
         if disposition_val == 'voice message':
@@ -3111,10 +3123,18 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
             params["quote_sent_date"] = quote_time
         print(f"[DISPOSITION] Lead {lead_id} disposition updated to {disposition}")
         # Build the new API URL and payload for LeadDial
-        if server == "Prod":
-            api_url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+        
+        if site == "MA":
+            if server == "Prod":
+                api_url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+            else:
+                api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
         else:
-            api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
+            if server == "Prod":
+                api_url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+            else:
+                api_url = "https://usastage.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
+
         
         print(f"[DISPOSITION] params: {params}")
         print(f"[DISPOSITION] url: {api_url}")
@@ -3192,6 +3212,11 @@ async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
         print("Ma-only")
         prompt_obj = {
             "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
+        }
+    elif brand_id == '6':
+        print("Cw-only")
+        prompt_obj = {
+            "id": "pmpt_695d8a399a348190bd1740599b25975c02e188fe0f606ad0"
         }
     elif lead_data_result == '1':
         if brand_id == '2':
