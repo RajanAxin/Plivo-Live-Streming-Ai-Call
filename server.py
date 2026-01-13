@@ -2000,7 +2000,7 @@ async def update_or_add_lead_details(openai_ws,args,item_id, call_id,conversatio
         if args.get('move_size'):
             move_size_lower = args['move_size'].lower()
 
-            if conversation_state.get('site','').lower() == 'ma':
+            if conversation_state.get('site','').lower() in ("ma", "cw"):
                 if re.search(r'\bstudio(\s*(apartment|room))?\b', move_size_lower):
                     update_data['move_size'] = 1
                     api_update_data['move_size'] = args['move_size']
