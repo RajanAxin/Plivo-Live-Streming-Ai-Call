@@ -2234,7 +2234,6 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
                 "instructions": "I’m sorry, but I can’t send out an inventory link."
             }
         }))
-
     
 async def send_payment_link(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Sending Payment Link ===")
@@ -2404,7 +2403,7 @@ async def sms_send_or_not_fun(site, server, payload):
     If site is not "MA", returns True (no API call needed).
     """
     print(f"[TRANSFER] Checking SMS send conditions: site={site}, server={server}")
-    
+    print('ppload',payload)
     # If site is not MA, don't make API call
     if site not in ("MA", "CW"):
         print(f"[TRANSFER] Site is not MA ({site}), skipping API call")
