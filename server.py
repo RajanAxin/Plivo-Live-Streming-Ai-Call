@@ -975,6 +975,7 @@ async def handle_message():
         'user_partial':'',
         'current_ai_text': '',
         'lead_id': lead_id,
+        'brand_id': brand_id,
         'lead_numbers_id': lead_numbers_id,
         't_lead_id': t_lead_id,
         't_call_id': t_call_id,
@@ -1251,12 +1252,15 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             #print(f'Received function call response: {response}')
             args = json.loads(response['arguments'])
             print(f'Received custom tool response: {args}')
-            cursor.execute("""
-                INSERT INTO function_responses (lead_id, function_response)
-                VALUES (%s, %s)
-            """, (conversation_state['lead_id'], json.dumps(args)))
-            conn.commit()
-            print(f"Successfully stored function response for lead_id: {conversation_state['lead_id']}")
+
+            if fn != 'send_inventory_link' and conversation_state.get('brand_id') != '6':
+                cursor.execute("""
+                    INSERT INTO function_responses (lead_id, function_response)
+                    VALUES (%s, %s)
+                """, (conversation_state['lead_id'], json.dumps(args)))
+                conn.commit()
+                print(f"Successfully stored function response for lead_id: {conversation_state['lead_id']}")
+            
             if fn == "assign_customer_disposition":
                 await handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "set_call_disposition":
@@ -1264,7 +1268,8 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             elif fn == "update_lead":
                 await update_or_add_lead_details(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "send_inventory_link":
-                await send_inventory_link(openai_ws, args, item_id, call_id, conversation_state)
+                if conversation_state['brand_id'] != '6':
+                    await send_inventory_link(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "send_payment_link":
                 await send_payment_link(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "send_invoice_link":
