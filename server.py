@@ -1268,8 +1268,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             elif fn == "update_lead":
                 await update_or_add_lead_details(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "send_inventory_link":
-                if conversation_state['brand_id'] != '6':
-                    await send_inventory_link(openai_ws, args, item_id, call_id, conversation_state)
+                await send_inventory_link(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "send_payment_link":
                 await send_payment_link(openai_ws, args, item_id, call_id, conversation_state)
             elif fn == "send_invoice_link":
@@ -2174,31 +2173,50 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
         "com_type": "call"
     }
 
-    if(conversation_state.get('lead_status') == 'quote sent' or conversation_state.get('lead_status') == 'not booked'):
-        
-        api_success = await sms_send_or_not_fun(
-        conversation_state.get('site'), 
-        conversation_state.get('server'), 
-        payload
-        )
-        print(f"[TRANSFER] API call result: {api_success}")
+    if(conversation_state.get('brand_id') !='6'):
 
-        await openai_ws.send(json.dumps({
-            "type": "conversation.item.create",
-            "item": {
-                "id": item_id,
-                "type": "function_call_output",
-                "call_id": call_id,
-                "output": json.dumps({"status": "Inventory link sent"})
-            }
-        }))
-        await openai_ws.send(json.dumps({
-            "type": "response.create",
-            "response": {
-                "modalities": ["audio", "text"],
-                "instructions": "The inventory link has been sent successfully."
-            }
-        }))
+        if(conversation_state.get('lead_status') == 'quote sent' or conversation_state.get('lead_status') == 'not booked'):
+
+            api_success = await sms_send_or_not_fun(
+            conversation_state.get('site'), 
+            conversation_state.get('server'), 
+            payload
+            )
+            print(f"[TRANSFER] API call result: {api_success}")
+
+            await openai_ws.send(json.dumps({
+                "type": "conversation.item.create",
+                "item": {
+                    "id": item_id,
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": json.dumps({"status": "Inventory link sent"})
+                }
+            }))
+            await openai_ws.send(json.dumps({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["audio", "text"],
+                    "instructions": "The inventory link has been sent successfully."
+                }
+            }))
+        else:
+            await openai_ws.send(json.dumps({
+                "type": "conversation.item.create",
+                "item": {
+                    "id": item_id,
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": json.dumps({"status": "We are unable to send an inventory link right now."})
+                }
+            }))
+            await openai_ws.send(json.dumps({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["audio", "text"],
+                    "instructions": "We can't send you an inventory link right now. i've noted this and our representative will update you shortly."
+                }
+            }))
     else:
         await openai_ws.send(json.dumps({
             "type": "conversation.item.create",
@@ -2206,16 +2224,17 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
                 "id": item_id,
                 "type": "function_call_output",
                 "call_id": call_id,
-                "output": json.dumps({"status": "We are unable to send an inventory link right now."})
+                "output": json.dumps({"status": "We are can't provide you a inventory link."})
             }
         }))
         await openai_ws.send(json.dumps({
             "type": "response.create",
             "response": {
                 "modalities": ["audio", "text"],
-                "instructions": "We can't send you an inventory link right now. i've noted this and our representative will update you shortly."
+                "instructions": "I’m sorry, but I can’t send out an inventory link."
             }
         }))
+
     
 async def send_payment_link(openai_ws, args, item_id, call_id, conversation_state):
     print("\n=== Sending Payment Link ===")
