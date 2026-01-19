@@ -2418,7 +2418,7 @@ async def sms_send_or_not_fun(site, server, payload):
             url = "https://developer.leaddial.co/developer/api/tenant/lead/send-customer-sms"
     else:
         if server == "Prod":
-            url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+            url = "https://countrywide.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
         else:
             url = "https://usastage.leaddial.co/developer/api/tenant/lead/send-customer-sms"
 
@@ -2474,7 +2474,7 @@ async def update_lead_to_external_api(api_update_data, call_u_id, lead_id, site,
                 url = "https://developer.leaddial.co/developer/api/tenant/lead/update-customer-info"
         elif site == "CW":
             if server == "Prod":
-                url = "https://ma.leaddial.co/api/tenant/lead/update-customer-info"
+                url = "https://countrywide.leaddial.co/api/tenant/lead/update-customer-info"
             else:
                 url = "https://usastage.leaddial.co/developer/api/tenant/lead/update-customer-info"
         else:
@@ -3168,7 +3168,7 @@ async def set_ma_lead_dispostion_status_update(lead_id, lead_type, disposition_v
                 api_url = "https://developer.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
         else:
             if server == "Prod":
-                api_url = "https://ma.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+                api_url = "https://countrywide.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
             else:
                 api_url = "https://usastage.leaddial.co/developer/cron/tenant/agent-call-center/set-disposition-ai"
 
