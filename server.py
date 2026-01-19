@@ -142,7 +142,7 @@ def segment_speakers_new(transcript_text: str):
 
 
 
-def segment_speakers(transcript_text: str):
+def segment_speakers_working_link_up(transcript_text: str):
     """Ask GPT to analyze entire transcript and return final disposition only."""
     response = openai.chat.completions.create(
         model="gpt-4o-mini",
@@ -179,6 +179,209 @@ def segment_speakers(transcript_text: str):
         ],
         response_format={"type": "json_object"}  # ensure valid JSON
     )
+    return response.choices[0].message.content
+
+def segment_speakers(transcript_text: str):
+    """Ask GPT to analyze entire transcript and return final disposition only.
+    IMPORTANT: This function MUST NOT change or invent disposition names.
+    """
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a deterministic call disposition classifier. Follow rules strictly and never change disposition labels."
+            },
+            {
+                "role": "user",
+                "content": f"""
+You are a deterministic disposition classifier.
+Apply the rules strictly in order.
+Once a rule matches, STOP and return ONLY the disposition value.
+Do NOT explain reasoning.
+
+────────────────────────────────
+GLOBAL HARD STOPS
+────────────────────────────────
+
+RULE 0 — VOICE MESSAGE / NO ANSWER
+If transcript contains ONLY:
+- Voicemail greeting
+- Automated system
+- IVR prompts
+- No live human conversation
+
+→ disposition = Voice Message
+STOP.
+
+────────────────────────────────
+COMPLIANCE
+────────────────────────────────
+
+RULE 1 — DO NOT CALL
+If customer says:
+- "Do not call"
+- "Stop calling"
+- "Remove my number"
+- "Take me off your list"
+
+→ disposition = DNC
+STOP.
+
+RULE 2 — WRONG PHONE
+If customer says:
+- "Wrong number"
+- "This isn't me"
+- "You have the wrong person"
+
+→ disposition = Wrong Phone
+STOP.
+
+────────────────────────────────
+BOOKING OUTCOMES
+────────────────────────────────
+
+RULE 3 — BOOKED WITH US
+If customer confirms booking with your company:
+- "Already booked with you"
+- "You are handling it"
+- "We are scheduled with you"
+
+→ disposition = Booked with Us
+STOP.
+
+RULE 4 — BOOKED WITH PODS
+If customer confirms PODS / container services:
+- PODS
+- Pack Rat
+- Container storage movers
+
+→ disposition = Booked with PODs
+STOP.
+
+RULE 5 — BOOKED WITH TRUCK RENTAL
+If customer confirms:
+- U-Haul
+- Penske
+- Budget
+- Ryder
+
+→ disposition = Booked with Truck Rental
+STOP.
+
+RULE 6 — GENERIC BOOKED
+If customer says:
+- "Already booked movers"
+- "We hired someone"
+But company type is unclear
+
+→ disposition = Booked
+STOP.
+
+────────────────────────────────
+INTEREST & INTENT
+────────────────────────────────
+
+RULE 7 — NOT INTERESTED
+If customer says:
+- "Not interested"
+- "Just browsing"
+- "Don't need movers"
+- Clearly wasting time
+
+→ disposition = Not Interested
+STOP.
+
+RULE 8 — FOLLOW UP
+If customer explicitly requests:
+- "Call me back"
+- "Call later"
+- "Reach me next week"
+
+→ disposition = Follow Up
+STOP.
+
+────────────────────────────────
+CALL FAILURE STATES
+────────────────────────────────
+
+RULE 9 — NO ANSWER / NOT CONNECTED
+If:
+- Ringing only
+- No human interaction
+- Call never connects
+
+→ disposition = No Answer
+STOP.
+
+RULE 10 — CALL DROPPED / DISCONNECTED
+If:
+- Call cuts off
+- Network failure
+- Sudden silence without intent
+
+→ disposition = Not Connected
+STOP.
+
+────────────────────────────────
+EDGE CASES
+────────────────────────────────
+
+RULE 11 — NO BUYER
+If:
+- Business line
+- Receptionist
+- Office front desk
+- Non-residential contact
+
+→ disposition = No Buyer
+STOP.
+
+────────────────────────────────
+LAST RESORT
+────────────────────────────────
+
+RULE 12 — TRUCK RENTAL INQUIRY ONLY
+If discussion is ONLY about renting a truck
+(No movers, no booking)
+
+→ disposition = Truck Rental
+STOP.
+
+If none of the above rules match:
+
+→ disposition = No Buyer
+STOP.
+
+Transcript:
+{transcript_text}
+
+Possible dispositions (MUST match exactly):
+- Not Connected
+- DNC
+- Not Interested
+- Follow Up
+- No Buyer
+- Voice Message
+- Wrong Phone
+- Booked
+- Booked with Us
+- Booked with PODs
+- Booked with Truck Rental
+- Truck Rental
+- No Answer
+
+Output ONLY valid JSON:
+{{
+  "disposition": "<one_of_the_above>",
+  "transcript_text": "{transcript_text}"
+}}
+"""
+            }
+        ],
+        response_format={"type": "json_object"}
+    )
+
     return response.choices[0].message.content
 
 
