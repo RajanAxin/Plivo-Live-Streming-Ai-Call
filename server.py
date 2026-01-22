@@ -2149,7 +2149,6 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     }))
 
 
-
 async def lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state):
     city = args.get("city")
     state = args.get("state")
@@ -2621,7 +2620,7 @@ async def sms_send_or_not_fun(site, server, payload):
             url = "https://developer.leaddial.co/developer/api/tenant/lead/send-customer-sms"
     else:
         if server == "Prod":
-            url = "https://countrywide.leaddial.co/cron/tenant/agent-call-center/set-disposition-ai"
+            url = "https://countrywide.leaddial.co/api/tenant/lead/send-customer-sms"
         else:
             url = "https://usastage.leaddial.co/developer/api/tenant/lead/send-customer-sms"
 
