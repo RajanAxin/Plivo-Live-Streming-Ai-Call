@@ -1456,13 +1456,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             args = json.loads(response['arguments'])
             print(f'Received custom tool response: {args}')
 
-            if fn != 'send_inventory_link' and conversation_state.get('brand_id') != '6':
-                cursor.execute("""
-                    INSERT INTO function_responses (lead_id, function_response)
-                    VALUES (%s, %s)
-                """, (conversation_state['lead_id'], json.dumps(args)))
-                conn.commit()
-                print(f"Successfully stored function response for lead_id: {conversation_state['lead_id']}")
+            cursor.execute("""
+                INSERT INTO function_responses (lead_id, function_response)
+                VALUES (%s, %s)
+            """, (conversation_state['lead_id'], json.dumps(args)))
+            conn.commit()
+            print(f"Successfully stored function response for lead_id: {conversation_state['lead_id']}")
             
             if fn == "assign_customer_disposition":
                 await handle_assign_disposition(openai_ws, args, item_id, call_id, conversation_state)
