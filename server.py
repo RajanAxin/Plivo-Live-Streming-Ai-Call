@@ -1070,7 +1070,7 @@ async def handle_message():
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('connected to the OpenAI Realtime API')
 
-            await send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result)
+            await send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result,server)
 
              # Send the specific audio_message as initial prompt
             initial_prompt = {
@@ -3238,13 +3238,21 @@ async def ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id,
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result):
+async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result,server):
 
     if brand_id == '5':
         print("Ma-only")
-        prompt_obj = {
-            "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
-        }
+        if server == 'Prod':
+            print("Ma-prod")
+            prompt_obj = {
+                "id": "pmpt_6949c64757788194b81db1cb113fda3d0723a6832edde4a7"
+            }
+        else:
+            print("Ma-stage")
+            prompt_obj = {
+                "id": "pmpt_6979057639d08194aea23dadbe92e49103e471b13f9e9846"
+            }
+
     elif brand_id == '6':
         print("Cw-only")
         prompt_obj = {
