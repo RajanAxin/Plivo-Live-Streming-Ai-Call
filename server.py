@@ -1925,7 +1925,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         else:
             await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'], conversation_state["lead_type"], args.get("disposition"), conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
             ai_greeting_instruction = (
-                f"Disposition '{args.get("disposition")}' has been saved. "
+                f"Disposition '{args.get('disposition')}' has been saved. "
                 "Call add_lead_note with a short summary of this disposition, "
                 "then ask the user if they need anything else."
             )
