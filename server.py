@@ -2168,54 +2168,36 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
         "com_type": "call"
     }
 
-    if(conversation_state.get('brand_id') !='6'):
+    
 
-        if(conversation_state.get('lead_status') == 'quote sent' or conversation_state.get('lead_status') == 'not booked'):
-
-            api_success = await sms_send_or_not_fun(
-            conversation_state.get('site'), 
-            conversation_state.get('server'), 
-            payload
-            )
-            print(f"[TRANSFER] API call result: {api_success}")
-            ai_greeting_instruction = (
-                "Inventory link was sent to the customer. "
-                "Call add_lead_note with a short summary stating that the inventory link "
-                "was shared via SMS, then confirm to the user that it has been sent."
-            )
-            await openai_ws.send(json.dumps({
-                "type": "conversation.item.create",
-                "item": {
-                    "id": item_id,
-                    "type": "function_call_output",
-                    "call_id": call_id,
-                    "output": json.dumps({"status": "Inventory link sent"})
-                }
-            }))
-            await openai_ws.send(json.dumps({
-                "type": "response.create",
-                "response": {
-                    "modalities": ["audio", "text"],
-                    "instructions": ai_greeting_instruction
-                }
-            }))
-        else:
-            await openai_ws.send(json.dumps({
-                "type": "conversation.item.create",
-                "item": {
-                    "id": item_id,
-                    "type": "function_call_output",
-                    "call_id": call_id,
-                    "output": json.dumps({"status": "We are unable to send an inventory link right now."})
-                }
-            }))
-            await openai_ws.send(json.dumps({
-                "type": "response.create",
-                "response": {
-                    "modalities": ["audio", "text"],
-                    "instructions": "We can't send you an inventory link right now. i've noted this and our representative will update you shortly."
-                }
-            }))
+    if(conversation_state.get('lead_status') == 'quote sent' or conversation_state.get('lead_status') == 'not booked'):
+        api_success = await sms_send_or_not_fun(
+        conversation_state.get('site'), 
+        conversation_state.get('server'), 
+        payload
+        )
+        print(f"[TRANSFER] API call result: {api_success}")
+        ai_greeting_instruction = (
+            "Inventory link was sent to the customer. "
+            "Call add_lead_note with a short summary stating that the inventory link "
+            "was shared via SMS, then confirm to the user that it has been sent."
+        )
+        await openai_ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "id": item_id,
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps({"status": "Inventory link sent"})
+            }
+        }))
+        await openai_ws.send(json.dumps({
+            "type": "response.create",
+            "response": {
+                "modalities": ["audio", "text"],
+                "instructions": ai_greeting_instruction
+            }
+        }))
     else:
         await openai_ws.send(json.dumps({
             "type": "conversation.item.create",
@@ -2223,14 +2205,21 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
                 "id": item_id,
                 "type": "function_call_output",
                 "call_id": call_id,
-                "output": json.dumps({"status": "We are can't provide you a inventory link."})
+                "output": json.dumps({"status": "We are unable to send an inventory link right now."})
             }
         }))
+
+        ai_greeting_instruction = (
+            "Customer requested an inventory link but it could not be sent due to lead status. "
+            "Call add_lead_note with a short summary explaining why the inventory link "
+            "was not shared, then politely inform the customer."
+        )
+        
         await openai_ws.send(json.dumps({
             "type": "response.create",
             "response": {
                 "modalities": ["audio", "text"],
-                "instructions": "I’m sorry, but I can’t send out an inventory link."
+                "instructions": ai_greeting_instruction
             }
         }))
     
@@ -2289,11 +2278,16 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
                 "output": json.dumps({"status": "We are unable to send a payment link right now."})
             }
         }))
+        ai_greeting_instruction = (
+            "Customer requested a payment link but it could not be sent. "
+            "Call add_lead_note with a short summary stating that the payment link "
+            "was unavailable or lead status was invalid, then notify the customer."
+        )
         await openai_ws.send(json.dumps({
             "type": "response.create",
             "response": {
                 "modalities": ["audio", "text"],
-                "instructions": "We can't send you a payment link right now. i've noted this and our representative will update you shortly."
+                "instructions": ai_greeting_instruction
             }
         }))
         
@@ -2350,11 +2344,17 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
                 "output": json.dumps({"status": "We are unable to send an invoice link right now."})
             }
         }))
+
+        ai_greeting_instruction = (
+            "Customer requested an invoice link but it could not be sent. "
+            "Call add_lead_note with a short summary explaining why the invoice "
+            "link was not available, then politely inform the customer."
+        )
         await openai_ws.send(json.dumps({
             "type": "response.create",
             "response": {
                 "modalities": ["audio", "text"],
-                "instructions": "We can't send you an invoice link right now. i've noted this and our representative will update you shortly."
+                "instructions": ai_greeting_instruction
             }
         }))
         
