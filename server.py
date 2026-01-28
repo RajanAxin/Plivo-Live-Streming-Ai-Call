@@ -2178,7 +2178,11 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
             payload
             )
             print(f"[TRANSFER] API call result: {api_success}")
-
+            ai_greeting_instruction = (
+                "Inventory link was sent to the customer. "
+                "Call add_lead_note with a short summary stating that the inventory link "
+                "was shared via SMS, then confirm to the user that it has been sent."
+            )
             await openai_ws.send(json.dumps({
                 "type": "conversation.item.create",
                 "item": {
@@ -2192,7 +2196,7 @@ async def send_inventory_link(openai_ws, args, item_id, call_id, conversation_st
                 "type": "response.create",
                 "response": {
                     "modalities": ["audio", "text"],
-                    "instructions": "The inventory link has been sent successfully."
+                    "instructions": ai_greeting_instruction
                 }
             }))
         else:
@@ -2262,11 +2266,16 @@ async def send_payment_link(openai_ws, args, item_id, call_id, conversation_stat
                 "output": json.dumps({"status": "Payment link sent"})
             }
         }))
+        ai_greeting_instruction = (
+            "Payment link was successfully sent to the customer via SMS. "
+            "Call add_lead_note with a short summary mentioning the payment link was shared, "
+            "then inform the customer that they can proceed with payment."
+        )
         await openai_ws.send(json.dumps({
             "type": "response.create",
             "response": {
                 "modalities": ["audio", "text"],
-                "instructions": "The payment link has been sent successfully."
+                "instructions": ai_greeting_instruction
             }
         }))
     else:
@@ -2318,11 +2327,16 @@ async def send_invoice_link(openai_ws, args, item_id, call_id, conversation_stat
                 "output": json.dumps({"status": "Invoice link sent"})
             }
         }))
+        ai_greeting_instruction = (
+            "Invoice link was sent to the customer after booking confirmation. "
+            "Call add_lead_note with a short summary confirming the invoice link "
+            "was shared via SMS, then inform the customer."
+        )
         await openai_ws.send(json.dumps({
             "type": "response.create",
             "response": {
                 "modalities": ["audio", "text"],
-                "instructions": "The invoice link has been sent successfully."
+                "instructions": ai_greeting_instruction
             }
         }))
     else:
