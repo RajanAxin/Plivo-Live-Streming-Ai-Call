@@ -2117,10 +2117,10 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         if args.get("disposition") == 'transfer':
                 if conversation_state['agent_transfer'] == 'None':
                     ai_greeting_instruction = (
-                        "Disposition detected as 'transfer'. "
-                        "Agents are not available. "
-                        "Call add_lead_note with a short summary, then inform the user "
-                        "that a follow-up has been scheduled."
+                       "Agents are not available. "
+                       "Call add_lead_note with a short summary indicating that a follow-up "
+                       "has been scheduled due to agent unavailability. "
+                       "Then inform the user that a follow-up has been scheduled."
                     )
                     await set_ma_lead_dispostion_status_update(conversation_state['t_lead_id'],conversation_state["lead_type"], "follow up", conversation_state['t_call_id'], conversation_state['lead_phone'], follow_up_time, conversation_state['server'], conversation_state['site'])
                 else:
