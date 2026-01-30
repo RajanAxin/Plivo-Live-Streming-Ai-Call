@@ -63,95 +63,97 @@ def segment_speakers(transcript_text: str):
                 Apply the rules STRICTLY in order.
                 Once a rule matches, STOP and return ONLY the disposition.
                 Do NOT explain reasoning.
-                
+
                 ────────────────────────────────
                 GLOBAL HARD STOPS (HIGHEST)
                 ────────────────────────────────
-                
+
                 RULE 0 — VOICE MESSAGE
                 If the transcript contains ONLY:
                 - Voicemail greetings
                 - Automated system / IVR
                 - Beeps, mailbox messages
                 - No live human conversation
-                
+
                 → disposition = Voice Message
                 STOP.
-                
+
                 RULE 1 — NO ANSWER
                 If the call rings but:
                 - No one answers
                 - Ends without voicemail
                 - Silence only
-                
+
                 → disposition = No Answer
                 STOP.
-                
+
                 RULE 2 — NOT CONNECTED
                 If transcript includes:
                 - Call failed
                 - Network error
                 - Call could not be completed
                 - Immediate disconnection without conversation
-                
+
                 → disposition = Not Connected
                 STOP.
-                
+
                 ────────────────────────────────
                 COMPLIANCE & INVALID CONTACT
                 ────────────────────────────────
-                
+
                 RULE 3 — DO NOT CALL
                 If customer explicitly says:
                 - “Do not call”
                 - “Remove my number”
                 - “Stop calling”
                 - “Take me off your list”
-                
+
                 → disposition = DNC
                 STOP.
-                
+
                 RULE 4 — WRONG PHONE
                 If person says:
                 - “Wrong number”
                 - “You have the wrong person”
                 - “This isn’t me”
                 - “No one here by that name”
-                
+
                 → disposition = Wrong Phone
                 STOP.
-                
+
                 ────────────────────────────────
                 BOOKING OUTCOMES (DOMINANT)
                 ────────────────────────────────
-                
+
                 RULE 5 — BOOKED WITH US
                 If customer confirms:
                 - “We already booked with you”
                 - “You are handling our move”
                 - “Already scheduled with your company”
-                
+
                 → disposition = Booked with Us
                 STOP.
-                
+
                 RULE 6 — BOOKED (GENERIC)
-                If customer says:
-                - “We already booked movers”
-                - “We hired someone”
-                
-                AND company is NOT specified
-                
+                If the customer clearly states they have already:
+                - “Already got a mover”
+                - “Already hired movers”
+                - “We already booked”
+                - “We went with someone else”
+                - “We already took care of it”
+                - “We’re all set with movers”
+
                 → disposition = Booked
                 STOP.
-                
+
                 RULE 7 — BOOKED WITH PODS
                 If customer mentions booking with:
                 - PODS
                 - Container moving services
-                
+
                 → disposition = Booked with PODs
                 STOP.
-                
+
                 RULE 8 — BOOKED WITH TRUCK RENTAL
                 If customer confirms booking with:
                 - U-Haul
@@ -159,74 +161,74 @@ def segment_speakers(transcript_text: str):
                 - Ryder
                 - Budget
                 - Any truck rental company
-                
+
                 → disposition = Booked with Truck Rental
                 STOP.
-                
+
                 ────────────────────────────────
                 INTENT & INTEREST
                 ────────────────────────────────
-                
+
                 RULE 9 — NOT INTERESTED
                 If customer says:
-                - “Not interested”
-                - “Just browsing”
-                - “Don’t need movers”
-                - Clearly no intent to proceed
-                
+                - Explicitly says “not interested”
+                - Says “just browsing”
+                - Says “don’t need movers” AND does NOT mention hiring or booking
+                - Shows no intent AND no prior booking
+
                 → disposition = Not Interested
                 STOP.
-                
+
                 RULE 10 — NO BUYER
                 If customer:
                 - Is not the decision maker
                 - Says “I’m just helping”
                 - Says “This isn’t my move”
-                
+
                 → disposition = No Buyer
                 STOP.
-                
+
                 ────────────────────────────────
                 FOLLOW-UP
                 ────────────────────────────────
-                
+
                 RULE 11 — FOLLOW UP
                 If customer explicitly says:
                 - “Call me back”
                 - “Follow up later”
                 - “Reach me tomorrow / next week”
-                
+
                 → disposition = Follow Up
                 STOP.
-                
+
                 ────────────────────────────────
                 TRUCK RENTAL (NON-BOOKED)
                 ────────────────────────────────
-                
+
                 RULE 12 — TRUCK RENTAL
                 If customer indicates:
                 - They plan to rent a truck
                 - They prefer DIY moving
                 - But has NOT booked yet
-                
+
                 → disposition = Truck Rental
                 STOP.
-                
+
                 ────────────────────────────────
                 LAST RESORT
                 ────────────────────────────────
-                
+
                 RULE 13 — DEFAULT
                 If:
                 - Human conversation occurred
                 - No clear booking, refusal, or follow-up
-                
+
                 → disposition = Not Connected
                 STOP.
-                
+
                 Transcript:
                 {transcript_text}
-                
+
                 Allowed dispositions (MUST match exactly):
                 - Not Connected
                 - DNC
@@ -241,7 +243,7 @@ def segment_speakers(transcript_text: str):
                 - Booked with Truck Rental
                 - Truck Rental
                 - No Answer
-                
+
                 Output ONLY valid JSON:
                 {{
                   "disposition": "<one_of_the_above>",
