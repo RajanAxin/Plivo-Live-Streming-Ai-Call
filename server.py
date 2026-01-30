@@ -47,6 +47,214 @@ def transcribe(file_path):
         )
     return transcript.text
 
+def segment_speakers(transcript_text: str):
+    """Deterministic call disposition classifier using strict ordered rules."""
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a deterministic call disposition classifier."
+            },
+            {
+                "role": "user",
+                "content": f"""
+                You are a deterministic disposition classifier.
+                Apply the rules STRICTLY in order.
+                Once a rule matches, STOP and return ONLY the disposition.
+                Do NOT explain reasoning.
+                
+                ────────────────────────────────
+                GLOBAL HARD STOPS (HIGHEST)
+                ────────────────────────────────
+                
+                RULE 0 — VOICE MESSAGE
+                If the transcript contains ONLY:
+                - Voicemail greetings
+                - Automated system / IVR
+                - Beeps, mailbox messages
+                - No live human conversation
+                
+                → disposition = Voice Message
+                STOP.
+                
+                RULE 1 — NO ANSWER
+                If the call rings but:
+                - No one answers
+                - Ends without voicemail
+                - Silence only
+                
+                → disposition = No Answer
+                STOP.
+                
+                RULE 2 — NOT CONNECTED
+                If transcript includes:
+                - Call failed
+                - Network error
+                - Call could not be completed
+                - Immediate disconnection without conversation
+                
+                → disposition = Not Connected
+                STOP.
+                
+                ────────────────────────────────
+                COMPLIANCE & INVALID CONTACT
+                ────────────────────────────────
+                
+                RULE 3 — DO NOT CALL
+                If customer explicitly says:
+                - “Do not call”
+                - “Remove my number”
+                - “Stop calling”
+                - “Take me off your list”
+                
+                → disposition = DNC
+                STOP.
+                
+                RULE 4 — WRONG PHONE
+                If person says:
+                - “Wrong number”
+                - “You have the wrong person”
+                - “This isn’t me”
+                - “No one here by that name”
+                
+                → disposition = Wrong Phone
+                STOP.
+                
+                ────────────────────────────────
+                BOOKING OUTCOMES (DOMINANT)
+                ────────────────────────────────
+                
+                RULE 5 — BOOKED WITH US
+                If customer confirms:
+                - “We already booked with you”
+                - “You are handling our move”
+                - “Already scheduled with your company”
+                
+                → disposition = Booked with Us
+                STOP.
+                
+                RULE 6 — BOOKED (GENERIC)
+                If customer says:
+                - “We already booked movers”
+                - “We hired someone”
+                
+                AND company is NOT specified
+                
+                → disposition = Booked
+                STOP.
+                
+                RULE 7 — BOOKED WITH PODS
+                If customer mentions booking with:
+                - PODS
+                - Container moving services
+                
+                → disposition = Booked with PODs
+                STOP.
+                
+                RULE 8 — BOOKED WITH TRUCK RENTAL
+                If customer confirms booking with:
+                - U-Haul
+                - Penske
+                - Ryder
+                - Budget
+                - Any truck rental company
+                
+                → disposition = Booked with Truck Rental
+                STOP.
+                
+                ────────────────────────────────
+                INTENT & INTEREST
+                ────────────────────────────────
+                
+                RULE 9 — NOT INTERESTED
+                If customer says:
+                - “Not interested”
+                - “Just browsing”
+                - “Don’t need movers”
+                - Clearly no intent to proceed
+                
+                → disposition = Not Interested
+                STOP.
+                
+                RULE 10 — NO BUYER
+                If customer:
+                - Is not the decision maker
+                - Says “I’m just helping”
+                - Says “This isn’t my move”
+                
+                → disposition = No Buyer
+                STOP.
+                
+                ────────────────────────────────
+                FOLLOW-UP
+                ────────────────────────────────
+                
+                RULE 11 — FOLLOW UP
+                If customer explicitly says:
+                - “Call me back”
+                - “Follow up later”
+                - “Reach me tomorrow / next week”
+                
+                → disposition = Follow Up
+                STOP.
+                
+                ────────────────────────────────
+                TRUCK RENTAL (NON-BOOKED)
+                ────────────────────────────────
+                
+                RULE 12 — TRUCK RENTAL
+                If customer indicates:
+                - They plan to rent a truck
+                - They prefer DIY moving
+                - But has NOT booked yet
+                
+                → disposition = Truck Rental
+                STOP.
+                
+                ────────────────────────────────
+                LAST RESORT
+                ────────────────────────────────
+                
+                RULE 13 — DEFAULT
+                If:
+                - Human conversation occurred
+                - No clear booking, refusal, or follow-up
+                
+                → disposition = Not Connected
+                STOP.
+                
+                Transcript:
+                {transcript_text}
+                
+                Allowed dispositions (MUST match exactly):
+                - Not Connected
+                - DNC
+                - Not Interested
+                - Follow Up
+                - No Buyer
+                - Voice Message
+                - Wrong Phone
+                - Booked
+                - Booked with Us
+                - Booked with PODs
+                - Booked with Truck Rental
+                - Truck Rental
+                - No Answer
+                
+                Output ONLY valid JSON:
+                {{
+                  "disposition": "<one_of_the_above>",
+                  "transcript_text": "{transcript_text}"
+                }}
+                """
+            }
+        ],
+        response_format={"type": "json_object"}
+    )
+
+    return response.choices[0].message.content
+
 
 def segment_speakers_new(transcript_text: str):
     """Ask GPT to analyze entire transcript and return final disposition only."""
