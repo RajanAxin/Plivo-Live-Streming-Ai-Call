@@ -2147,7 +2147,11 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         "type": "response.create",
         "response": {
             "modalities": ["audio", "text"],
-            "instructions": ai_greeting_instruction
+            "instructions": ai_greeting_instruction,
+            "tool_choice": {
+                "type": "function",
+                "name": "add_lead_note"
+            }
         }
     }))
 
