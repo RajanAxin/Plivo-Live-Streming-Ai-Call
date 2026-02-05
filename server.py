@@ -1290,7 +1290,8 @@ async def handle_message():
                     "temperature": 0.8,
                     "instructions": (
                         f"Start with this exact phrase: '{audio_message}' "
-                        "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase.\n\n"
+                         "IMPORTANT: Always complete your sentences and thoughts. Never stop speaking in the middle of a sentence or phrase. "
+                         "After collecting all lead details during an inbound call, always confirm the details with the caller before updating them."
                     )
                 }
             }
