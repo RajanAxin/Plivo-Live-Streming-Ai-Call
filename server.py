@@ -389,7 +389,7 @@ def segment_speakers_working_link_up(transcript_text: str):
     )
     return response.choices[0].message.content
 
-def ma_lead_segment_speakers(transcript_text: str):
+def ma_lead_old_segment_speakers(transcript_text: str):
     """Ask GPT to analyze entire transcript and return final disposition only."""
     response = openai.chat.completions.create(
         model="gpt-4o-mini",
@@ -632,6 +632,277 @@ def ma_lead_segment_speakers(transcript_text: str):
         response_format={"type": "json_object"}  # ensure valid JSON
     )
     return response.choices[0].message.content
+
+def ma_lead_segment_speakers(transcript_text: str):
+    """Ask GPT to analyze entire transcript and return final disposition only."""
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages = [
+          {
+            "role": "system",
+            "content": (
+              "You are a deterministic, post-call disposition classifier for MA leads. "
+              "Your output is used for compliance, reporting, and automation. "
+              "Any incorrect classification is considered a system failure."
+            )
+          },
+          {
+            "role": "user",
+            "content": f"""
+        You are a STRICT, DETERMINISTIC rule-based classifier.
+
+        CRITICAL EXECUTION CONSTRAINTS:
+        Apply rules TOP TO BOTTOM.
+        FIRST matching rule WINS.
+        ONCE a rule matches → IMMEDIATELY STOP.
+        NEVER infer intent.
+        NEVER assume outcomes.
+        NEVER guess.
+        If evidence is insufficient → choose "no disposition".
+        Do NOT explain reasoning.
+        Output ONLY the final JSON.
+
+        ────────────────────────────────
+        ABSOLUTE GLOBAL HARD STOPS
+        ────────────────────────────────
+
+        RULE 0 — VOICEMAIL / IVR (HIGHEST PRIORITY)
+        Match ONLY IF transcript contains:
+        Voicemail greetings
+        Automated IVR systems
+        Phrases like “press 1”, “mailbox is full”, “leave a message”
+        NO human back-and-forth
+        NO conversational responses
+
+        → disposition = voice message
+        STOP.
+
+        ────────────────────────────────
+        COMPLIANCE & CONTACT BLOCKS
+        ────────────────────────────────
+
+        RULE 1 — DO NOT CALL (LEGAL OVERRIDE)
+        Customer explicitly states:
+        “Do not call”
+        “Stop calling”
+        “Remove my number”
+        “Take me off your list”
+
+        → disposition = DNC
+        STOP.
+
+        RULE 2 — WRONG PHONE
+        Customer explicitly states:
+        “Wrong number”
+        “You have the wrong person”
+        “No one here by that name”
+
+        → disposition = wrong phone
+        STOP.
+
+        ────────────────────────────────
+        BOOKING OUTCOMES (DOMINANT)
+        ────────────────────────────────
+
+        RULE 3 — BOOKED WITH YOUR COMPANY
+        Match ONLY IF customer clearly confirms:
+        Existing confirmed booking
+        Scheduling already completed
+        “We’re already booked with you”
+
+        NOT valid if:
+        Agent merely offers booking
+        Customer says “thinking about it”
+
+        → disposition = booked
+        STOP.
+
+        RULE 4 — BOOKED WITH OTHERS
+        Match ONLY IF customer explicitly confirms:
+        Commitment to another mover
+        Truck rental (U-Haul, Penske, Budget, etc.)
+        Container service (PODS, Pack Rat, etc.)
+
+        → disposition = booked with others
+        STOP.
+
+        ────────────────────────────────
+        TRANSFER & ESCALATION
+        ────────────────────────────────
+
+        RULE 5 — SUCCESSFUL TRANSFER
+        Match ONLY IF transcript confirms:
+        Transfer completed
+        Call handed to live human
+        Conversation continues post-transfer
+
+        → disposition = transfer
+        STOP.
+
+        RULE 6 — FAILED TRANSFER / AGENT REQUEST FAILURE
+        Match IF:
+        Transfer or agent requested
+        Transfer attempted
+        Call ended before success
+
+        → disposition = disconnected
+        STOP.
+
+        ────────────────────────────────
+        QUOTE HANDLING (STRICT EVIDENCE)
+        ────────────────────────────────
+
+        RULE 7 — QUOTE SENT / ACKNOWLEDGED
+        Match ONLY IF:
+        Pricing details are given OR
+        Quote explicitly sent (SMS/email/verbal)
+        AND
+        Customer acknowledges receipt
+
+        NOT valid if:
+        Quote was promised but not delivered
+        Call ended mid-process
+
+        → disposition = Quote Sent
+        STOP.
+
+        RULE 8 — QUOTE REQUEST BUT NOT DELIVERED
+        Match IF:
+        Customer asks for quote
+        Quote process begins
+        Call ends before delivery
+
+        → disposition = no disposition
+        STOP.
+
+        ────────────────────────────────
+        FOLLOW-UP LOGIC (EXPLICIT ONLY)
+        ────────────────────────────────
+
+        RULE 9 — CUSTOMER REQUESTED FOLLOW-UP
+        Match ONLY IF customer explicitly says:
+        “Call me back”
+        “Follow up later”
+        “Reach me tomorrow / next week”
+
+        → disposition = follow up
+        STOP.
+
+        RULE 10 — AFTER-HOURS CALLBACK AGREEMENT
+        Match IF ALL are true:
+        Customer requests live agent
+        Call time is outside 8 AM–6 PM EST
+        Customer AGREES to callback
+
+        If customer does NOT agree → no disposition.
+
+        → disposition = follow up
+        STOP.
+
+        ────────────────────────────────
+        INTENT NEGATION
+        ────────────────────────────────
+
+        RULE 11 — NOT INTERESTED
+        Match ONLY IF customer clearly states:
+        “Not interested”
+        “Don’t need movers”
+        “Just browsing / just curious”
+        Explicit refusal with no engagement
+
+        → disposition = not interested
+        STOP.
+
+        ────────────────────────────────
+        CALL TERMINATION TYPES (ORDER MATTERS)
+        ────────────────────────────────
+
+        RULE 12 — CUSTOMER HUNG UP
+        Match IF transcript shows:
+        Customer abruptly ends call
+        Clear frustration or refusal followed by hang-up
+        Explicit goodbye then termination
+
+        → disposition = hang up
+        STOP.
+
+        RULE 13 — DISCONNECTED
+        Match IF:
+        Sudden call drop
+        Silence without intent
+        Technical failure
+        Transfer cut off
+
+        → disposition = disconnected
+        STOP.
+
+        RULE 14 — NO COVERAGE
+        Match IF transcript contains:
+        Carrier error messages
+        “Out of coverage”
+        “Number unreachable”
+
+        → disposition = No Coverage
+        STOP.
+
+        ────────────────────────────────
+        NON-CONSUMER / EDGE CASES
+        ────────────────────────────────
+
+        RULE 15 — BUSINESS / OFFICE LINE
+        Match IF call reaches:
+        Business office
+        Reception desk
+        Commercial entity
+        Non-residential number
+
+        → disposition = no disposition
+        STOP.
+
+        ────────────────────────────────
+        SAFE FALLBACK (NO ASSUMPTIONS)
+        ────────────────────────────────
+
+        RULE 16 — HUMAN CONVERSATION WITH NO OUTCOME
+        Match IF:
+        Human answered
+        Conversation occurred
+        NO booking, quote, refusal, follow-up, or transfer
+        Outcome is unclear
+
+        → disposition = no disposition
+        STOP.
+
+        ────────────────────────────────
+        TRANSCRIPT:
+        {transcript_text}
+
+        ALLOWED DISPOSITIONS (EXACT MATCH ONLY):
+        voice message
+        DNC
+        wrong phone
+        follow up
+        booked
+        booked with others
+        disconnected
+        no disposition
+        No Coverage
+        hang up
+        Quote Sent
+        transfer
+
+        FINAL OUTPUT FORMAT (JSON ONLY):
+        {{
+          "disposition": "<exact_match>",
+          "transcript_text": "{transcript_text}"
+        }}
+        """
+          }
+        ],
+        response_format={"type": "json_object"}  # ensure valid JSON
+    )
+    return response.choices[0].message.content
+
 
 @app.get("/disposition_process")
 def disposition_process():
