@@ -649,227 +649,253 @@ def ma_lead_segment_speakers(transcript_text: str):
           {
             "role": "user",
             "content": f"""
-        You are a STRICT, DETERMINISTIC rule-based classifier.
-
-        CRITICAL EXECUTION CONSTRAINTS:
-        Apply rules TOP TO BOTTOM.
+        You are a STRICT, DETERMINISTIC call disposition classifier for MA leads.
+        EXECUTION CONTRACT (NON-NEGOTIABLE):
+        Evaluate rules TOP → BOTTOM.
         FIRST matching rule WINS.
-        ONCE a rule matches → IMMEDIATELY STOP.
+        STOP immediately after match.
         NEVER infer intent.
-        NEVER assume outcomes.
+        NEVER assume future actions.
         NEVER guess.
-        If evidence is insufficient → choose "no disposition".
-        Do NOT explain reasoning.
-        Output ONLY the final JSON.
-
+        If evidence is insufficient → use "no disposition".
+        Output ONLY final JSON.
+        No explanations.
+        
         ────────────────────────────────
-        ABSOLUTE GLOBAL HARD STOPS
+        GLOBAL HARD STOPS
         ────────────────────────────────
-
-        RULE 0 — VOICEMAIL / IVR (HIGHEST PRIORITY)
+        
+        RULE 0 — VOICEMAIL / IVR
         Match ONLY IF transcript contains:
-        Voicemail greetings
-        Automated IVR systems
-        Phrases like “press 1”, “mailbox is full”, “leave a message”
-        NO human back-and-forth
-        NO conversational responses
-
+        Voicemail greeting
+        IVR / automated prompts
+        “Press 1”, “Leave a message”, “Mailbox is full”
+        NO human dialogue
+        
         → disposition = voice message
         STOP.
-
+        
+        ────────────────────────────────
+        TRANSCRIPT INTEGRITY
+        ────────────────────────────────
+        
+        RULE 1 — INCOMPLETE / TRUNCATED TRANSCRIPT
+        Match IF transcript shows:
+        Cut-off sentences
+        “[inaudible]”, “[audio lost]”
+        Abrupt ending with no closing language
+        
+        → disposition = disconnected
+        STOP.
+        
         ────────────────────────────────
         COMPLIANCE & CONTACT BLOCKS
         ────────────────────────────────
-
-        RULE 1 — DO NOT CALL (LEGAL OVERRIDE)
-        Customer explicitly states:
+        
+        RULE 2 — DO NOT CALL
+        Customer explicitly says:
         “Do not call”
         “Stop calling”
         “Remove my number”
-        “Take me off your list”
-
+        
         → disposition = DNC
         STOP.
-
-        RULE 2 — WRONG PHONE
-        Customer explicitly states:
+        
+        RULE 3 — WRONG PHONE
+        Customer explicitly says:
         “Wrong number”
         “You have the wrong person”
         “No one here by that name”
-
+        
         → disposition = wrong phone
         STOP.
-
+        
         ────────────────────────────────
         BOOKING OUTCOMES (DOMINANT)
         ────────────────────────────────
-
-        RULE 3 — BOOKED WITH YOUR COMPANY
-        Match ONLY IF customer clearly confirms:
-        Existing confirmed booking
-        Scheduling already completed
-        “We’re already booked with you”
-
+        
+        RULE 4 — BOOKED WITH MOVING ALLY
+        Match ONLY IF customer confirms:
+        Existing booking with Moving Ally
+        Move already scheduled with you
+        
         NOT valid if:
-        Agent merely offers booking
-        Customer says “thinking about it”
-
+        Agent merely states details
+        Customer only acknowledges info
+        
         → disposition = booked
         STOP.
-
-        RULE 4 — BOOKED WITH OTHERS
-        Match ONLY IF customer explicitly confirms:
-        Commitment to another mover
-        Truck rental (U-Haul, Penske, Budget, etc.)
-        Container service (PODS, Pack Rat, etc.)
-
+        
+        RULE 5 — BOOKED WITH OTHERS
+        Customer confirms:
+        Another mover
+        U-Haul / Penske / Budget
+        PODS / Pack Rat / container service
+        
         → disposition = booked with others
         STOP.
-
+        
         ────────────────────────────────
         TRANSFER & ESCALATION
         ────────────────────────────────
-
-        RULE 5 — SUCCESSFUL TRANSFER
-        Match ONLY IF transcript confirms:
+        
+        RULE 6 — SUCCESSFUL TRANSFER
+        Match ONLY IF:
         Transfer completed
-        Call handed to live human
-        Conversation continues post-transfer
-
+        Live agent conversation occurs
+        
         → disposition = transfer
         STOP.
-
-        RULE 6 — FAILED TRANSFER / AGENT REQUEST FAILURE
+        
+        RULE 7 — FAILED TRANSFER
         Match IF:
         Transfer or agent requested
         Transfer attempted
-        Call ended before success
-
+        Call ends before completion
+        
         → disposition = disconnected
         STOP.
-
+        
         ────────────────────────────────
-        QUOTE HANDLING (STRICT EVIDENCE)
+        DISCUSSION / CONFIRMATION (CRITICAL FIX)
         ────────────────────────────────
-
-        RULE 7 — QUOTE SENT / ACKNOWLEDGED
-        Match ONLY IF:
-        Pricing details are given OR
-        Quote explicitly sent (SMS/email/verbal)
+        
+        RULE 8 — DISCUSSION / CONFIRMATION CALL
+        Match IF:
+        Human conversation occurred
+        Purpose is discussion, clarification, or confirmation
+        No pricing discussed
+        No quote delivered
+        No booking action
+        No refusal
+        
+        → disposition = follow up
+        STOP.
+        
+        ────────────────────────────────
+        QUOTE HANDLING (STRICT DELIVERY ONLY)
+        ────────────────────────────────
+        
+        RULE 9 — QUOTE SENT (DELIVERED ONLY)
+        Match ONLY IF transcript includes AT LEAST ONE:
+        Explicit dollar amounts ($, USD, numeric pricing)
+        “Your total is $X”
+        “The quote is $X”
+        Customer verbally acknowledges a price
+        
         AND
-        Customer acknowledges receipt
-
-        NOT valid if:
-        Quote was promised but not delivered
-        Call ended mid-process
-
+        
+        Quote is delivered DURING the call
+        
+        Explicitly INVALID if:
+        “I’ll send you a quote”
+        “You’ll receive pricing later”
+        “I’ll arrange a quote”
+        Pricing discussed without numbers
+        
         → disposition = Quote Sent
         STOP.
-
-        RULE 8 — QUOTE REQUEST BUT NOT DELIVERED
+        
+        RULE 10 — QUOTE REQUESTED BUT NOT DELIVERED
         Match IF:
-        Customer asks for quote
-        Quote process begins
-        Call ends before delivery
-
-        → disposition = no disposition
+        Customer asks for pricing
+        Quote promised or arranged
+        NO price delivered during call
+        
+        → disposition = follow up
         STOP.
-
+        
         ────────────────────────────────
-        FOLLOW-UP LOGIC (EXPLICIT ONLY)
+        FOLLOW-UP (EXPLICIT REQUEST)
         ────────────────────────────────
-
-        RULE 9 — CUSTOMER REQUESTED FOLLOW-UP
-        Match ONLY IF customer explicitly says:
+        
+        RULE 11 — CUSTOMER REQUESTED FOLLOW-UP
+        Customer explicitly says:
         “Call me back”
         “Follow up later”
         “Reach me tomorrow / next week”
-
+        
         → disposition = follow up
         STOP.
-
-        RULE 10 — AFTER-HOURS CALLBACK AGREEMENT
-        Match IF ALL are true:
-        Customer requests live agent
-        Call time is outside 8 AM–6 PM EST
-        Customer AGREES to callback
-
-        If customer does NOT agree → no disposition.
-
-        → disposition = follow up
-        STOP.
-
+        
         ────────────────────────────────
         INTENT NEGATION
         ────────────────────────────────
-
-        RULE 11 — NOT INTERESTED
-        Match ONLY IF customer clearly states:
+        
+        RULE 12 — NOT INTERESTED
+        Customer clearly states:
         “Not interested”
         “Don’t need movers”
-        “Just browsing / just curious”
-        Explicit refusal with no engagement
-
+        “Just browsing”
+        Explicit refusal
+        
+        Overrides hang-up.
+        
         → disposition = not interested
         STOP.
-
+        
         ────────────────────────────────
-        CALL TERMINATION TYPES (ORDER MATTERS)
+        CALL TERMINATION TYPES
         ────────────────────────────────
-
-        RULE 12 — CUSTOMER HUNG UP
-        Match IF transcript shows:
-        Customer abruptly ends call
-        Clear frustration or refusal followed by hang-up
-        Explicit goodbye then termination
-
-        → disposition = hang up
-        STOP.
-
-        RULE 13 — DISCONNECTED
+        
+        RULE 13 — AGENT ENDED CALL
         Match IF:
-        Sudden call drop
-        Silence without intent
-        Technical failure
-        Transfer cut off
-
-        → disposition = disconnected
-        STOP.
-
-        RULE 14 — NO COVERAGE
-        Match IF transcript contains:
-        Carrier error messages
-        “Out of coverage”
-        “Number unreachable”
-
-        → disposition = No Coverage
-        STOP.
-
-        ────────────────────────────────
-        NON-CONSUMER / EDGE CASES
-        ────────────────────────────────
-
-        RULE 15 — BUSINESS / OFFICE LINE
-        Match IF call reaches:
-        Business office
-        Reception desk
-        Commercial entity
-        Non-residential number
-
+        Agent politely closes call
+        No frustration
+        No refusal
+        Normal goodbye
+        
         → disposition = no disposition
         STOP.
-
-        ────────────────────────────────
-        SAFE FALLBACK (NO ASSUMPTIONS)
-        ────────────────────────────────
-
-        RULE 16 — HUMAN CONVERSATION WITH NO OUTCOME
+        
+        RULE 14 — CUSTOMER HUNG UP
         Match IF:
-        Human answered
-        Conversation occurred
-        NO booking, quote, refusal, follow-up, or transfer
-        Outcome is unclear
-
+        Customer abruptly terminates
+        Clear frustration or refusal before hang-up
+        
+        → disposition = hang up
+        STOP.
+        
+        RULE 15 — DISCONNECTED
+        Match IF:
+        Technical failure
+        Sudden drop
+        NOT mere silence
+        
+        → disposition = disconnected
+        STOP.
+        
+        RULE 16 — NO COVERAGE
+        Match IF:
+        Carrier error
+        “Out of coverage”
+        “Number unreachable”
+        
+        → disposition = No Coverage
+        STOP.
+        
+        ────────────────────────────────
+        NON-CONSUMER
+        ────────────────────────────────
+        
+        RULE 17 — BUSINESS / OFFICE LINE
+        Match IF:
+        Business or office reached
+        Reception desk
+        Commercial entity
+        
+        → disposition = no disposition
+        STOP.
+        
+        ────────────────────────────────
+        SAFE FALLBACK
+        ────────────────────────────────
+        
+        RULE 18 — HUMAN ANSWERED, NO OUTCOME
+        Match IF:
+        Human interaction occurred
+        No other rule matched
+        
         → disposition = no disposition
         STOP.
 
