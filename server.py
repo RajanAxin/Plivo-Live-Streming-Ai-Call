@@ -1370,17 +1370,17 @@ async def test():
                 follow_time = ''
                 await set_ma_lead_dispostion_status_update(lead_data.get('t_lead_id'), lead_data.get('type'),"voice message", lead_data.get('t_call_id'), lead_data.get('phone'),follow_time, lead_data.get('server'), lead_data.get('site'))
             else:
-                if to_number == "12176186806":
-                    if lead_data and lead_data.get('phone') == "6025298353":
+                if lead_data.get('site') == "ZAP":
+                    if lead_data.get('server') == "Stage":
                         url = "https://snapit:mysnapit22@zapstage.snapit.software/api/calltransfertest"
                     else:
                         url = "https://zapprod:zap2024@zap.snapit.software/api/calltransfertest"
                 else:
-                        print("to_number is not 12176186806")
-                        if lead_data and lead_data.get('phone') in ("6025298353", "6263216095"):
-                            url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
-                        else:
-                            url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
+                    print("to_number is not 12176186806")
+                    if lead_data.get('server') == "Stage":
+                        url = "https://snapit:mysnapit22@stage.linkup.software/api/calltransfertest"
+                    else:
+                        url = "https://linkup:newlink_up34@linkup.software/api/calltransfertest"
 
                 # Make the API call
                 try:
@@ -1577,7 +1577,7 @@ async def handle_message():
         async with websockets.connect(url, extra_headers=headers) as openai_ws:
             print('connected to the OpenAI Realtime API')
 
-            await send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result,server)
+            await send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result,server,to_number)
 
              # Send the specific audio_message as initial prompt
             initial_prompt = {
@@ -3764,9 +3764,14 @@ async def ai_instract_guid(openai_ws, ai_greeting_instruction, item_id, call_id,
 # ===============================================================
 # SEND SESSION UPDATE (HOSTED PROMPT ONLY)
 # ===============================================================
-async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result,server):
+async def send_Session_update(openai_ws,prompt_to_use,brand_id,lead_data_result,server,to_number):
 
-    if brand_id == '5':
+    if to_number == '12176186806':
+        print("Zap-only")
+        prompt_obj = {
+                "id": "pmpt_698bc3bdd1148190aeb9136b97d73b0c007b4b3b840fb65d"
+            }
+    elif brand_id == '5':
         print("Ma-only")
         if server == 'Prod':
             print("Ma-prod")
