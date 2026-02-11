@@ -1460,6 +1460,7 @@ async def handle_message():
     inventory_link = websocket.args.get('inventory_link', 'unknown')
     lead_numbers_id = websocket.args.get('lead_numbers_id', 'unknown')
     lead_data_result = websocket.args.get('lead_data_result', 'unknown')
+    to_number = websocket.args.get('To', '')
     print('lead_id', lead_id)
     print('lead_numbers_id', lead_numbers_id)
     print('t_call_id', t_call_id)
