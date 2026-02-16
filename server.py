@@ -2411,7 +2411,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     ai_greeting_instruction = ''
     transfer_result = None
     follow_up_time = args.get("followup_time")
-
+    print('conversation_state_agent_transfer', conversation_state['agent_transfer'])
     if args.get("disposition") is not None:
         if args.get("disposition") == 'transfer':
                 if conversation_state['agent_transfer'] == 'None':
