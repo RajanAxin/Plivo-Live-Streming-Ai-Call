@@ -2441,15 +2441,27 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
             )
 
 
-    # 2️⃣ Tell the model to speak confirmation / error (audio + text)
     print('ai_greeting_instruction',ai_greeting_instruction)
+    # STEP 1 → inject hard system instruction
+    await openai_ws.send(json.dumps({
+        "type": "conversation.item.create",
+        "item": {
+            "type": "message",
+            "role": "system",
+            "content": [
+                {"type": "text", "text": ai_greeting_instruction}
+            ]
+        }
+    }))
+
+    # STEP 2 → trigger response normally
     await openai_ws.send(json.dumps({
         "type": "response.create",
         "response": {
-            "modalities": ["audio", "text"],
-            "instructions": ai_greeting_instruction
+            "modalities": ["audio","text"]
         }
     }))
+
 
 
 async def lookup_zip_options(openai_ws, args, item_id, call_id, conversation_state):
