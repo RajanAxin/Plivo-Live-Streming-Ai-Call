@@ -2449,7 +2449,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
             "type": "message",
             "role": "system",
             "content": [
-                {"type": "text", "text": ai_greeting_instruction}
+                {"type": "input_text", "text": ai_greeting_instruction}
             ]
         }
     }))
