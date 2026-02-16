@@ -2414,7 +2414,8 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
     print('conversation_state_agent_transfer', conversation_state['agent_transfer'])
     if args.get("disposition") is not None:
         if args.get("disposition") == 'transfer':
-                if conversation_state['agent_transfer'] == 'None':
+                if not conversation_state['agent_transfer']:
+
                     ai_greeting_instruction = (
                        "Agents are not available. "
                        "Call add_lead_note with a short summary indicating that a follow-up "
@@ -2446,11 +2447,7 @@ async def handle_ma_lead_set_call_disposition(openai_ws, args, item_id, call_id,
         "type": "response.create",
         "response": {
             "modalities": ["audio", "text"],
-            "instructions": ai_greeting_instruction,
-            "tool_choice": {
-                "type": "function",
-                "name": "add_lead_note"
-            }
+            "instructions": ai_greeting_instruction
         }
     }))
 
