@@ -1438,7 +1438,7 @@ async def monitor_old_silence(plivo_ws, conversation_state):
     except asyncio.CancelledError:
         print("[SILENCE DETECTOR] Task cancelled.")
 
-async def monitor_silence(plivo_ws, conversation_state):
+async def monitor_silence(plivo_ws, openai_ws, conversation_state):
     """Monitors the conversation for silence and disconnects based on site rules."""
     try:
         # Track whether we've already warned the user
@@ -1468,10 +1468,16 @@ async def monitor_silence(plivo_ws, conversation_state):
                 print("[SILENCE DETECTOR] 10s silence detected. Sending 'Are you there?' prompt.")
 
                 try:
-                    await plivo_ws.send(json.dumps({
-                        "event": "speak",
-                        "text": "Are you there?"
-                    }))
+                    warning_prompt = {
+                        "type": "response.create",
+                        "response": {
+                            "modalities": ["audio", "text"],
+                            "temperature": 0.7,
+                            "instructions": "Say exactly: Are you there?"
+                        }
+                    }
+
+                    await openai_ws.send(json.dumps(warning_prompt))
                     warning_sent = True  # Prevent repeating
                 except Exception as e:
                     print(f"[SILENCE DETECTOR] Error sending warning: {e}")
@@ -1672,7 +1678,7 @@ async def handle_message():
             # Create tasks for Plivo receiving, OpenAI consuming, and Silence monitoring
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
             openai_task = asyncio.create_task(consume_openai_messages())
-            silence_task = asyncio.create_task(monitor_silence(plivo_ws, conversation_state))
+            silence_task = asyncio.create_task(monitor_silence(plivo_ws, openai_ws,conversation_state))
 
             # Run all tasks together. If one fails (e.g. hangup), handle it.
             done, pending = await asyncio.wait(
