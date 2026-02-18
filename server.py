@@ -1405,28 +1405,36 @@ async def test():
 # SILENCE DETECTOR FUNCTION
 # ===============================================================
 async def monitor_silence(plivo_ws, conversation_state):
-    """Monitors the conversation for silence and disconnects after 1 minute."""
+    """Monitors the conversation for silence and disconnects based on site rules."""
     try:
         while True:
             # Check every 5 seconds to save resources
             await asyncio.sleep(5)
+
             # Get current time and last activity time from state
             now = asyncio.get_event_loop().time()
             last_activity = conversation_state.get('last_activity_time', 0)
-            
+
             # Calculate seconds of silence
             silence_duration = now - last_activity
+            website = conversation_state.get('site')
 
-            # If silence exceeds 120 seconds, hang up
-            if silence_duration > 120:
-                print(f"[SILENCE DETECTOR] Silence detected for {int(silence_duration)} seconds. Hanging up call {conversation_state.get('call_uuid')}.")
+            # Set silence limit based on website
+            silence_limit = 120 if website != 'CW' else 30
+
+            # If silence exceeds limit, hang up
+            if silence_duration > silence_limit:
+                print(
+                    f"[SILENCE DETECTOR] Silence detected for {int(silence_duration)} seconds "
+                    f"(limit: {silence_limit}) for site {website}. "
+                    f"Hanging up call {conversation_state.get('call_uuid')}."
+                )
                 try:
-                    # Send hangup command to Plivo
-                    #await dispostion_status_update(conversation_state['lead_id'], "Voicemail", "")
                     await plivo_ws.send(json.dumps({"event": "hangup"}))
                 except Exception as e:
                     print(f"[SILENCE DETECTOR] Error sending hangup: {e}")
                 break  # Stop the detector loop
+
     except asyncio.CancelledError:
         print("[SILENCE DETECTOR] Task cancelled.")
 
