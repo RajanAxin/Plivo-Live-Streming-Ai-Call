@@ -1404,7 +1404,7 @@ async def test():
 # ===============================================================
 # SILENCE DETECTOR FUNCTION
 # ===============================================================
-async def monitor_silence(plivo_ws, conversation_state):
+async def monitor_old_silence(plivo_ws, conversation_state):
     """Monitors the conversation for silence and disconnects based on site rules."""
     try:
         while True:
@@ -1423,6 +1423,60 @@ async def monitor_silence(plivo_ws, conversation_state):
             silence_limit = 120 if website != 'CW' else 30
 
             # If silence exceeds limit, hang up
+            if silence_duration > silence_limit:
+                print(
+                    f"[SILENCE DETECTOR] Silence detected for {int(silence_duration)} seconds "
+                    f"(limit: {silence_limit}) for site {website}. "
+                    f"Hanging up call {conversation_state.get('call_uuid')}."
+                )
+                try:
+                    await plivo_ws.send(json.dumps({"event": "hangup"}))
+                except Exception as e:
+                    print(f"[SILENCE DETECTOR] Error sending hangup: {e}")
+                break  # Stop the detector loop
+
+    except asyncio.CancelledError:
+        print("[SILENCE DETECTOR] Task cancelled.")
+
+async def monitor_silence(plivo_ws, conversation_state):
+    """Monitors the conversation for silence and disconnects based on site rules."""
+    try:
+        # Track whether we've already warned the user
+        warning_sent = False
+
+        while True:
+            # Check every 5 seconds to save resources
+            await asyncio.sleep(5)
+
+            # Get current time and last activity time from state
+            now = asyncio.get_event_loop().time()
+            last_activity = conversation_state.get('last_activity_time', 0)
+
+            # Calculate seconds of silence
+            silence_duration = now - last_activity
+            website = conversation_state.get('site')
+
+            # Set silence limit based on website
+            silence_limit = 120 if website != 'CW' else 30
+
+            # 🔹 If CW site and silence > 10 sec → Say "Are you there?" (only once)
+            if (
+                website == "CW"
+                and silence_duration > 10
+                and not warning_sent
+            ):
+                print("[SILENCE DETECTOR] 10s silence detected. Sending 'Are you there?' prompt.")
+
+                try:
+                    await plivo_ws.send(json.dumps({
+                        "event": "speak",
+                        "text": "Are you there?"
+                    }))
+                    warning_sent = True  # Prevent repeating
+                except Exception as e:
+                    print(f"[SILENCE DETECTOR] Error sending warning: {e}")
+
+            # 🔹 If silence exceeds final limit → Hang up
             if silence_duration > silence_limit:
                 print(
                     f"[SILENCE DETECTOR] Silence detected for {int(silence_duration)} seconds "
