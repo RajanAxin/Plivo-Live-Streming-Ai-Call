@@ -1465,7 +1465,7 @@ async def monitor_silence(plivo_ws, openai_ws, conversation_state):
                 and silence_duration > 10
                 and not warning_sent
             ):
-                print("[SILENCE DETECTOR] 10s silence detected. Sending 'Are you stil there?' prompt.")
+                print("[SILENCE DETECTOR] 10s silence detected. Sending 'Are you there?' prompt.")
 
                 try:
                     warning_prompt = {
@@ -1473,7 +1473,7 @@ async def monitor_silence(plivo_ws, openai_ws, conversation_state):
                         "response": {
                             "modalities": ["audio", "text"],
                             "temperature": 0.7,
-                            "instructions": "Say exactly: Are you stil there?"
+                            "instructions": "Say exactly: Are you there?"
                         }
                     }
 
@@ -1792,7 +1792,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         # ------------------------
         elif evt_type == "response.audio.delta":
             # UPDATE: Reset timer when AI is speaking
-            #conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
+            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
             # some responses use 'delta' (base64); make sure to handle accordingly
             delta_b64 = response.get("delta") or response.get("audio") or ""
             if delta_b64:
@@ -1809,7 +1809,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         elif evt_type == "response.audio.done":
             # optional: notify plivo that audio finished (if needed)
             print("[AI AUDIO DONE]")
-            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
 
         # ------------------------
         # Function call completed by model (your hosted prompt functions)
@@ -1882,6 +1881,12 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
             except Exception:
                 pass
             await openai_ws.send(json.dumps({"type": "response.cancel"}))
+        
+        elif evt_type == "input_audio_buffer.speech_stopped":
+            print("[USER STOPPED SPEAKING]")
+
+            # update last activity when user FINISHES speaking
+            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
 
         # ------------------------
         # Other events: log for debugging
