@@ -1465,7 +1465,7 @@ async def monitor_silence(plivo_ws, openai_ws, conversation_state):
                 and silence_duration > 10
                 and not warning_sent
             ):
-                print("[SILENCE DETECTOR] 10s silence detected. Sending 'Are you there?' prompt.")
+                print("[SILENCE DETECTOR] 10s silence detected. Sending 'Are you stil there?' prompt.")
 
                 try:
                     warning_prompt = {
@@ -1473,7 +1473,7 @@ async def monitor_silence(plivo_ws, openai_ws, conversation_state):
                         "response": {
                             "modalities": ["audio", "text"],
                             "temperature": 0.7,
-                            "instructions": "Say exactly: Are you there?"
+                            "instructions": "Say exactly: Are you stil there?"
                         }
                     }
 
