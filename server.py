@@ -1792,7 +1792,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         # ------------------------
         elif evt_type == "response.audio.delta":
             # UPDATE: Reset timer when AI is speaking
-            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
+            #conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
             # some responses use 'delta' (base64); make sure to handle accordingly
             delta_b64 = response.get("delta") or response.get("audio") or ""
             if delta_b64:
@@ -1809,6 +1809,7 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         elif evt_type == "response.audio.done":
             # optional: notify plivo that audio finished (if needed)
             print("[AI AUDIO DONE]")
+            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
 
         # ------------------------
         # Function call completed by model (your hosted prompt functions)
