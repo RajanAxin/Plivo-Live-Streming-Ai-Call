@@ -1764,7 +1764,9 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
                 )
             conversation_state["ai_transcript"] = conversation_state.get("ai_transcript", "") + f"USER: {final_text}\n"
             conversation_state["user_partial"] = ""  # reset
-
+        
+        elif evt_type == "response.done":
+            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
         # ------------------------
         # AI audio transcript (what the AI spoke) — partials
         # ------------------------
@@ -1808,11 +1810,6 @@ async def receive_from_openai(message, plivo_ws, openai_ws, conversation_state):
         elif evt_type == "response.audio.done":
             # optional: notify plivo that audio finished (if needed)
             print("[AI AUDIO DONE]")
-            conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
-        
-        elif evt_type == "response.output_audio.done":
-            # Specifically indicates the audio stream for the current item is complete.
-            print("AI audio stream finished.")
             conversation_state['last_activity_time'] = asyncio.get_event_loop().time()
 
         # ------------------------
