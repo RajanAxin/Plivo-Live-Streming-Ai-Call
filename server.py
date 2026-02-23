@@ -1678,7 +1678,8 @@ async def handle_message():
             # Create tasks for Plivo receiving, OpenAI consuming, and Silence monitoring
             receive_task = asyncio.create_task(receive_from_plivo(plivo_ws, openai_ws))
             openai_task = asyncio.create_task(consume_openai_messages())
-            silence_task = asyncio.create_task(monitor_silence(plivo_ws, openai_ws,conversation_state))
+            #silence_task = asyncio.create_task(monitor_silence(plivo_ws, openai_ws,conversation_state))
+            silence_task = asyncio.create_task(monitor_silence(plivo_ws,conversation_state))
 
             # Run all tasks together. If one fails (e.g. hangup), handle it.
             done, pending = await asyncio.wait(
