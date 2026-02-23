@@ -1404,7 +1404,7 @@ async def test():
 # ===============================================================
 # SILENCE DETECTOR FUNCTION
 # ===============================================================
-async def monitor_old_silence(plivo_ws, conversation_state):
+async def monitor_silence(plivo_ws, conversation_state):
     """Monitors the conversation for silence and disconnects based on site rules."""
     try:
         while True:
@@ -1438,7 +1438,7 @@ async def monitor_old_silence(plivo_ws, conversation_state):
     except asyncio.CancelledError:
         print("[SILENCE DETECTOR] Task cancelled.")
 
-async def monitor_silence(plivo_ws, openai_ws, conversation_state):
+async def monitor_cw_setup_silence(plivo_ws, openai_ws, conversation_state):
     """Monitors the conversation for silence and disconnects based on site rules."""
     try:
         # Track whether we've already warned the user
