@@ -215,15 +215,27 @@ def segment_speakers(transcript_text: str):
                 STOP.
 
                 ────────────────────────────────
+                QUOTE REQUESTED
+                ────────────────────────────────
+
+                RULE 13 — QUOTE REQUESTED
+                If customer:
+                - asks for price
+                - asks for estimate
+                - agrees to receive email quote
+                - discusses move details
+
+                → disposition = Follow Up
+                STOP.
+
+                ────────────────────────────────
                 LAST RESORT
                 ────────────────────────────────
 
-                RULE 13 — DEFAULT
+                RULE 14 — CONNECTED (DEFAULT)
                 If:
                 - Human conversation occurred
-                - No clear booking, refusal, or follow-up
-
-                → disposition = Not Connected
+                → disposition = Follow Up
                 STOP.
 
                 Transcript:
@@ -1137,6 +1149,13 @@ async def home():
             """, (from_number,))
             lead_data = cursor.fetchone()
             
+            if lead_data:
+                cursor.execute("""
+                    UPDATE leads 
+                    SET pick_up_time = NOW()
+                    WHERE lead_id = %s
+                """, (lead_data['lead_id'],))
+                conn.commit()
             # Query call number
             cursor.execute("SELECT * FROM call_number WHERE number = %s", (to_number,))
             call_number = cursor.fetchone()
