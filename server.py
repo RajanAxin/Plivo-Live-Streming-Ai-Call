@@ -1117,194 +1117,192 @@ async def log_to_dashboard(event_type, text, conversation_state):
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
-    # Extract the caller's number (From) and your Plivo number (To)
-    from_number = (await request.form).get('From') or request.args.get('From')
+    form = await request.form
+
+    from_number = form.get("From") or request.args.get("From")
     from_number = from_number[1:] if from_number else None
-    to_number = (await request.form).get('To') or request.args.get('To')
-    call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
+    to_number = form.get("To") or request.args.get("To")
+    call_uuid = form.get("CallUUID") or request.args.get("CallUUID")
+
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
-   # Default values
+
+    # -----------------------------
+    # Default Values
+    # -----------------------------
     brand_id = 1
-    voice_name = 'alloy'
-    voice_id = 'CwhRBWXzGAHq8TQ4Fs17'
-    audio = 'plivoai/vanline_inbound.mp3'
-    audio_message = "HI, This is ai-agent. Tell me what can i help you?"
-    ai_agent_name = 'AI Agent'
-    brand_name = ''
-    ai_agent_id = None  # Initialize ai_agent_id
+    voice_name = "alloy"
+    ai_agent_name = "AI Agent"
+    brand_name = ai_agent_name
+    audio_message = f"Hi, I'm from {ai_agent_name}. how are you?"
+    ai_agent_id = None
+    lead_data = None
     lead_data_result = 0
-    # Database queries using mysql.connector
+
     conn = get_db_connection()
+
     if conn:
         try:
             cursor = conn.cursor(dictionary=True, buffered=True)
-            
-            # Query lead data
-            cursor.execute("""
-                SELECT * FROM leads 
-                WHERE phone = %s 
-                ORDER BY lead_id DESC 
-                LIMIT 1
-            """, (from_number,))
-            lead_data = cursor.fetchone()
-            
-            if lead_data:
-                cursor.execute("""
-                    UPDATE leads 
-                    SET pick_up_time = NOW()
-                    WHERE lead_id = %s
-                """, (lead_data['lead_id'],))
-                conn.commit()
-            # Query call number
-            cursor.execute("SELECT * FROM call_number WHERE number = %s", (to_number,))
+
+            # ----------------------------------
+            # Fetch Call Number FIRST
+            # ----------------------------------
+            cursor.execute(
+                "SELECT * FROM call_number WHERE number = %s",
+                (to_number,)
+            )
             call_number = cursor.fetchone()
-            
-            # cursor.execute("""
-            #     SELECT 
-            #         *,
-            #         CASE 
-            #             WHEN 
-            #                 name IS NULL OR name = '' OR
-            #                 email IS NULL OR email = '' OR
-            #                 from_zip IS NULL OR from_zip = '' OR
-            #                 to_zip IS NULL OR to_zip = '' OR
-            #                 move_date IS NULL OR move_date = '' OR
-            #                 move_size IS NULL OR move_size = ''
-            #             THEN 0
-            #             ELSE 1
-            #         END AS is_complete
-            #     FROM leads
-            #     WHERE phone = %s
-            #     ORDER BY lead_id DESC
-            #     LIMIT 1
-            # """, (from_number,))
 
+            if call_number:
+                brand_id = call_number["brand_id"]
 
+                # ----------------------------------
+                # Fetch Brand
+                # ----------------------------------
+                cursor.execute(
+                    "SELECT * FROM mst_brand WHERE brand_id = %s",
+                    (brand_id,)
+                )
+                mst_brand_data = cursor.fetchone()
+
+                if mst_brand_data and mst_brand_data.get("full_name"):
+                    ai_agent_name = mst_brand_data["full_name"]
+                    brand_name = ai_agent_name
+
+                    # ✅ BASE GREETING SET HERE IMMEDIATELY
+                    audio_message = f"Hi, I'm from {ai_agent_name}. how are you?"
+
+                # ----------------------------------
+                # Fetch Voice
+                # ----------------------------------
+                cursor.execute(
+                    "SELECT * FROM brand_voice WHERE brand_id = %s",
+                    (brand_id,)
+                )
+                brand_voice = cursor.fetchone()
+
+                if brand_voice:
+                    cursor.execute(
+                        "SELECT * FROM mst_voiceid WHERE voice_id = %s",
+                        (brand_voice["voice_id"],)
+                    )
+                    voice = cursor.fetchone()
+                    if voice:
+                        voice_name = voice["voice_name"]
+
+                # ----------------------------------
+                # Fetch Active AI Agent
+                # ----------------------------------
+                cursor.execute(
+                    "SELECT id FROM ai_agents WHERE brand_id = %s AND agent_status = 'active'",
+                    (brand_id,)
+                )
+                ai_agent = cursor.fetchone()
+                if ai_agent:
+                    ai_agent_id = ai_agent["id"]
+
+            # ----------------------------------
+            # Fetch Lead
+            # ----------------------------------
             cursor.execute("""
-                SELECT 
-                    *,
+                SELECT *,
                     CASE 
-                        WHEN 
-                            name IS NULL OR name = '' OR
-                            email IS NULL OR email = ''
-                        THEN 0
-                        ELSE 1
+                        WHEN name IS NULL OR name = '' OR
+                             email IS NULL OR email = ''
+                        THEN 0 ELSE 1
                     END AS is_complete
                 FROM leads
                 WHERE phone = %s
                 ORDER BY lead_id DESC
                 LIMIT 1
             """, (from_number,))
-            lead_data_res = cursor.fetchone()
-            lead_data_result = lead_data_res['is_complete']
-            print('adasdasdasdasd',lead_data_result)
-            if call_number:
-                brand_id = call_number['brand_id']
-                
-                # Query brand voice
-                cursor.execute("SELECT * FROM brand_voice WHERE brand_id = %s", (brand_id,))
-                brand_voice = cursor.fetchone()
-                print(brand_voice)
-                cursor.execute("SELECT id FROM ai_agents WHERE brand_id = %s and agent_status = 'active'", (brand_id,))
-                ai_agent = cursor.fetchone()
-                
-                if ai_agent:
-                    ai_agent_id = ai_agent['id']  # Get the ai_agent_id
-                    # Note: We're no longer fetching the prompt here
-                if brand_voice:
-                    print('aaaaa',brand_voice['voice_id'])
-                    cursor.execute("SELECT * FROM mst_voiceid WHERE voice_id = %s", (brand_voice['voice_id'],))
-                    voice = cursor.fetchone()
-                    print('aaaaa',brand_voice['voice_id'])
-                    print(brand_voice['voice_id'])
-                    print('not getting',voice)
-                    if voice:
-                        voice_name = voice['voice_name']
 
-                if brand_id:
-                    cursor.execute("SELECT * FROM mst_brand WHERE brand_id = %s", (brand_id,))
-                    mst_brand_data= cursor.fetchone()
-                    print(mst_brand_data)
-                    if voice:
-                        ai_agent_name = mst_brand_data['full_name']
-                
-                if lead_data and lead_data['type'] == "outbound":
-                    if lead_data.get('name'):
-                        lead_user_name = lead_data.get('name')
-                        brand_name = f"{ai_agent_name}"
-                        audio_message = f"Hi {lead_user_name}, I'm Calling from {ai_agent_name}. how are you?"
-                    else:
-                        brand_name = f"{ai_agent_name}"
-                        audio_message = f"HI {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
+            lead_data = cursor.fetchone()
+
+            if lead_data:
+                lead_data_result = lead_data["is_complete"]
+
+                cursor.execute("""
+                    UPDATE leads
+                    SET pick_up_time = NOW()
+                    WHERE lead_id = %s
+                """, (lead_data["lead_id"],))
+                conn.commit()
+
+            # ----------------------------------
+            # Greeting Override Logic (Priority)
+            # ----------------------------------
+            if lead_data and lead_data.get("type") == "outbound":
+
+                if lead_data.get("name"):
+                    lead_user_name = lead_data["name"]
+                    audio_message = (
+                        f"Hi {lead_user_name}, "
+                        f"I'm calling from {ai_agent_name}. how are you?"
+                    )
                 else:
-                        brand_name = f"{ai_agent_name}"
-                        audio_message = f"Hi, I'm from {ai_agent_name}. how are you?"
-                       
-                        
+                    audio_message = (
+                        f"Hi, I'm calling from {ai_agent_name}. "
+                        f"Are you looking for a move?"
+                    )
+
         except Exception as e:
-            print(f"Database query error: {e}")
+            print(f"Database error: {e}")
+
         finally:
             if conn.is_connected():
                 cursor.close()
                 conn.close()
-    
-    lead_id = lead_data['lead_id'] if lead_data else 0
-    brand_id = brand_id
-    call_uuid = lead_data['calluuid'] if lead_data else 0
-    lead_timezone = lead_data['t_timezone'] if lead_data else 0
-    lead_phone = lead_data['phone'] if lead_data else 0
-    t_lead_id = lead_data['t_lead_id'] if lead_data else 0
-    t_call_id = lead_data['t_call_id'] if lead_data else 0
-    agent_transfer = lead_data['agent_transfer'] if lead_data else 0
-    lead_type = lead_data['type'] if lead_data else 'outbound'
-    lead_status = (lead_data.get('lead_status') if lead_data else None) or 'blank'
-    payment_link = (lead_data.get('payment_link') if lead_data else None) or 'blank'
-    invoice_link = (lead_data.get('invoice_link') if lead_data else None) or 'blank'
-    inventory_link = (lead_data.get('inventory_link') if lead_data else None) or 'blank'
-    site = lead_data['site'] if lead_data else 'PM'
-    server = lead_data['server'] if lead_data else 'Stag'
-    lead_numbers_id = (lead_data.get('lead_numbers_id') if lead_data else None) or 0
-    print(f"agent_id: {ai_agent_id if ai_agent_id else 'N/A'}")
-    print(f"brand_id: {brand_id if brand_id else 'N/A'}")
-    print(f"t_lead_id: {t_lead_id if t_lead_id else 'N/A'}")
-    print(f"agent_transfer: {agent_transfer if agent_transfer else 'N/A'}")
-    print(f"t_call_id: {t_call_id if t_call_id else 'N/A'}")
-    print(f"lead_type: {lead_type if lead_type else 'N/A'}")
-    print(f"payment_link: {payment_link if payment_link else 'N/A'}")
-    print(f"invoice_link: {invoice_link if invoice_link else 'N/A'}")
-    print(f"inventory_link: {inventory_link if inventory_link else 'N/A'}")
-    print(f"lead_numbers_id: {lead_numbers_id if lead_numbers_id else 'N/A'}")
-    print(f"lead_data_result: {lead_data_result if lead_data_result else 'N/A'}")
-    
+
+    # ----------------------------------
+    # Safe Lead Data Extraction
+    # ----------------------------------
+    lead_id = lead_data["lead_id"] if lead_data else 0
+    lead_phone = lead_data["phone"] if lead_data else 0
+    lead_timezone = lead_data["t_timezone"] if lead_data else 0
+    t_lead_id = lead_data["t_lead_id"] if lead_data else 0
+    t_call_id = lead_data["t_call_id"] if lead_data else 0
+    agent_transfer = lead_data["agent_transfer"] if lead_data else 0
+    lead_type = lead_data["type"] if lead_data else "outbound"
+    lead_status = (lead_data.get("lead_status") if lead_data else None) or "blank"
+    payment_link = (lead_data.get("payment_link") if lead_data else None) or "blank"
+    invoice_link = (lead_data.get("invoice_link") if lead_data else None) or "blank"
+    inventory_link = (lead_data.get("inventory_link") if lead_data else None) or "blank"
+    site = lead_data["site"] if lead_data else "PM"
+    server = lead_data["server"] if lead_data else "Stag"
+    lead_numbers_id = (lead_data.get("lead_numbers_id") if lead_data else None) or 0
+
+    # ----------------------------------
+    # WebSocket URL
+    # ----------------------------------
     ws_url = (
-    f"wss://{request.host}/media-stream?"
-    f"audio_message={quote(audio_message)}"
-    f"&amp;CallUUID={call_uuid}"
-    f"&amp;From={from_number}"
-    f"&amp;To={to_number}"
-    f"&amp;lead_phone={lead_phone}"
-    f"&amp;lead_id={lead_id}"
-    f"&amp;brand_id={brand_id}"
-    f"&amp;t_lead_id={t_lead_id}"
-    f"&amp;t_call_id={t_call_id}"
-    f"&amp;voice_name={voice_name}"
-    f"&amp;ai_agent_name={quote(ai_agent_name)}"
-    f"&amp;brand_name={quote(brand_name)}"
-    f"&amp;ai_agent_id={ai_agent_id}"
-    f"&amp;lead_timezone={lead_timezone}"
-    f"&amp;site={site}"
-    f"&amp;server={server}"
-    f"&amp;lead_type={lead_type}"
-    f"&amp;lead_status={quote(lead_status)}"
-    f"&amp;payment_link={quote(payment_link)}"
-    f"&amp;invoice_link={quote(invoice_link)}"
-    f"&amp;inventory_link={quote(inventory_link)}"
-    f"&amp;agent_transfer={agent_transfer}"
-    f"&amp;lead_numbers_id={lead_numbers_id}"
-    f"&amp;lead_data_result={lead_data_result}"
-    )              
-    print('ws-url',ws_url)
-    # XML response
+        f"wss://{request.host}/media-stream?"
+        f"audio_message={quote(audio_message)}"
+        f"&CallUUID={call_uuid}"
+        f"&From={from_number}"
+        f"&To={to_number}"
+        f"&lead_phone={lead_phone}"
+        f"&lead_id={lead_id}"
+        f"&brand_id={brand_id}"
+        f"&t_lead_id={t_lead_id}"
+        f"&t_call_id={t_call_id}"
+        f"&voice_name={voice_name}"
+        f"&ai_agent_name={quote(ai_agent_name)}"
+        f"&brand_name={quote(brand_name)}"
+        f"&ai_agent_id={ai_agent_id}"
+        f"&lead_timezone={lead_timezone}"
+        f"&site={site}"
+        f"&server={server}"
+        f"&lead_type={lead_type}"
+        f"&lead_status={quote(lead_status)}"
+        f"&payment_link={quote(payment_link)}"
+        f"&invoice_link={quote(invoice_link)}"
+        f"&inventory_link={quote(inventory_link)}"
+        f"&agent_transfer={agent_transfer}"
+        f"&lead_numbers_id={lead_numbers_id}"
+        f"&lead_data_result={lead_data_result}"
+    )
+
     xml_data = f'''<?xml version="1.0"?>
     <Response>
         <Stream streamTimeout="86400" keepCallAlive="true" bidirectional="true" 
