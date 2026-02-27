@@ -1117,12 +1117,12 @@ async def log_to_dashboard(event_type, text, conversation_state):
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
+    await asyncio.sleep(4)
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
     call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
-    await asyncio.sleep(2)
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
    # Default values
     brand_id = 1
