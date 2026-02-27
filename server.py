@@ -1117,12 +1117,11 @@ async def log_to_dashboard(event_type, text, conversation_state):
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
-    form = await request.form
     # Extract the caller's number (From) and your Plivo number (To)
-    from_number = form.get("From") or request.args.get("From")
+    from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
-    to_number = from_number[1:] if from_number else None
-    call_uuid = form.get('CallUUID') or request.args.get('CallUUID')
+    to_number = (await request.form).get('To') or request.args.get('To')
+    call_uuid = (await request.form).get('CallUUID') or request.args.get('CallUUID')
     print(f"Inbound call from: {from_number} to: {to_number} (Call UUID: {call_uuid})")
    # Default values
     brand_id = 1
@@ -1133,120 +1132,117 @@ async def home():
     ai_agent_name = 'AI Agent'
     brand_name = ''
     ai_agent_id = None  # Initialize ai_agent_id
-    lead_data = None
     lead_data_result = 0
-    
-    conn = get_db_connection()
     # Database queries using mysql.connector
+    conn = get_db_connection()
     if conn:
         try:
             cursor = conn.cursor(dictionary=True, buffered=True)
-
-            # ----------------------------------
-            # Fetch Call Number FIRST
-            # ----------------------------------
-            cursor.execute(
-                "SELECT * FROM call_number WHERE number = %s",
-                (to_number,)
-            )
-            call_number = cursor.fetchone()
-
-            if call_number:
-                brand_id = call_number["brand_id"]
-
-                # ----------------------------------
-                # Fetch Brand
-                # ----------------------------------
-                cursor.execute(
-                    "SELECT * FROM mst_brand WHERE brand_id = %s",
-                    (brand_id,)
-                )
-                mst_brand_data = cursor.fetchone()
-
-                if mst_brand_data and mst_brand_data.get("full_name"):
-                    ai_agent_name = mst_brand_data["full_name"]
-                    brand_name = ai_agent_name
-
-                    # ✅ BASE GREETING SET HERE IMMEDIATELY
-                    audio_message = f"Hi, I'm from {ai_agent_name}. how are you?"
-
-                # ----------------------------------
-                # Fetch Voice
-                # ----------------------------------
-                cursor.execute(
-                    "SELECT * FROM brand_voice WHERE brand_id = %s",
-                    (brand_id,)
-                )
-                brand_voice = cursor.fetchone()
-
-                if brand_voice:
-                    cursor.execute(
-                        "SELECT * FROM mst_voiceid WHERE voice_id = %s",
-                        (brand_voice["voice_id"],)
-                    )
-                    voice = cursor.fetchone()
-                    if voice:
-                        voice_name = voice["voice_name"]
-
-                # ----------------------------------
-                # Fetch Active AI Agent
-                # ----------------------------------
-                cursor.execute(
-                    "SELECT id FROM ai_agents WHERE brand_id = %s AND agent_status = 'active'",
-                    (brand_id,)
-                )
-                ai_agent = cursor.fetchone()
-                if ai_agent:
-                    ai_agent_id = ai_agent["id"]
-
-            # ----------------------------------
-            # Fetch Lead
-            # ----------------------------------
+            
+            # Query lead data
             cursor.execute("""
-                SELECT *,
+                SELECT * FROM leads 
+                WHERE phone = %s 
+                ORDER BY lead_id DESC 
+                LIMIT 1
+            """, (from_number,))
+            lead_data = cursor.fetchone()
+            
+            if lead_data:
+                cursor.execute("""
+                    UPDATE leads 
+                    SET pick_up_time = NOW()
+                    WHERE lead_id = %s
+                """, (lead_data['lead_id'],))
+                conn.commit()
+            # Query call number
+            cursor.execute("SELECT * FROM call_number WHERE number = %s", (to_number,))
+            call_number = cursor.fetchone()
+            
+            # cursor.execute("""
+            #     SELECT 
+            #         *,
+            #         CASE 
+            #             WHEN 
+            #                 name IS NULL OR name = '' OR
+            #                 email IS NULL OR email = '' OR
+            #                 from_zip IS NULL OR from_zip = '' OR
+            #                 to_zip IS NULL OR to_zip = '' OR
+            #                 move_date IS NULL OR move_date = '' OR
+            #                 move_size IS NULL OR move_size = ''
+            #             THEN 0
+            #             ELSE 1
+            #         END AS is_complete
+            #     FROM leads
+            #     WHERE phone = %s
+            #     ORDER BY lead_id DESC
+            #     LIMIT 1
+            # """, (from_number,))
+
+
+            cursor.execute("""
+                SELECT 
+                    *,
                     CASE 
-                        WHEN name IS NULL OR name = '' OR
-                             email IS NULL OR email = ''
-                        THEN 0 ELSE 1
+                        WHEN 
+                            name IS NULL OR name = '' OR
+                            email IS NULL OR email = ''
+                        THEN 0
+                        ELSE 1
                     END AS is_complete
                 FROM leads
                 WHERE phone = %s
                 ORDER BY lead_id DESC
                 LIMIT 1
             """, (from_number,))
+            lead_data_res = cursor.fetchone()
+            lead_data_result = lead_data_res['is_complete']
+            print('adasdasdasdasd',lead_data_result)
+            if call_number:
+                brand_id = call_number['brand_id']
+                
+                # Query brand voice
+                cursor.execute("SELECT * FROM brand_voice WHERE brand_id = %s", (brand_id,))
+                brand_voice = cursor.fetchone()
+                print(brand_voice)
+                cursor.execute("SELECT id FROM ai_agents WHERE brand_id = %s and agent_status = 'active'", (brand_id,))
+                ai_agent = cursor.fetchone()
+                
+                if ai_agent:
+                    ai_agent_id = ai_agent['id']  # Get the ai_agent_id
+                    # Note: We're no longer fetching the prompt here
+                if brand_voice:
+                    print('aaaaa',brand_voice['voice_id'])
+                    cursor.execute("SELECT * FROM mst_voiceid WHERE voice_id = %s", (brand_voice['voice_id'],))
+                    voice = cursor.fetchone()
+                    print('aaaaa',brand_voice['voice_id'])
+                    print(brand_voice['voice_id'])
+                    print('not getting',voice)
+                    if voice:
+                        voice_name = voice['voice_name']
 
-            lead_data = cursor.fetchone()
-
-            if lead_data:
-                lead_data_result = lead_data["is_complete"]
-
-                cursor.execute("""
-                    UPDATE leads
-                    SET pick_up_time = NOW()
-                    WHERE lead_id = %s
-                """, (lead_data["lead_id"],))
-                conn.commit()
-
-            # ----------------------------------
-            # Greeting Override Logic (Priority)
-            # ----------------------------------
-            if lead_data and lead_data.get("type") == "outbound":
-
-                if lead_data.get("name"):
-                    lead_user_name = lead_data["name"]
-                    audio_message = (
-                        f"Hi {lead_user_name}, "
-                        f"I'm calling from {ai_agent_name}. how are you?"
-                    )
+                if brand_id:
+                    cursor.execute("SELECT * FROM mst_brand WHERE brand_id = %s", (brand_id,))
+                    mst_brand_data= cursor.fetchone()
+                    print(mst_brand_data)
+                    if voice:
+                        ai_agent_name = mst_brand_data['full_name']
+                
+                if lead_data and lead_data['type'] == "outbound":
+                    if lead_data.get('name'):
+                        lead_user_name = lead_data.get('name')
+                        brand_name = f"{ai_agent_name}"
+                        audio_message = f"Hi {lead_user_name}, I'm Calling from {ai_agent_name}. how are you?"
+                    else:
+                        brand_name = f"{ai_agent_name}"
+                        audio_message = f"HI {ai_agent_name}. I got your lead from our agency. Are you looking for a move from somewhere?"
                 else:
-                    audio_message = (
-                        f"Hi, I'm calling from {ai_agent_name}. "
-                        f"Are you looking for a move?"
-                    )
-
+                        brand_name = f"{ai_agent_name}"
+                        audio_message = f"Hi, I'm from {ai_agent_name}. how are you?"
+                       
+                        
         except Exception as e:
-            print(f"Database error: {e}")
-
+            print(f"Database query error: {e}")
         finally:
             if conn.is_connected():
                 cursor.close()
