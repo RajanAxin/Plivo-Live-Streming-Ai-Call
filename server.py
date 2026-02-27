@@ -1242,7 +1242,24 @@ async def home():
                        
                         
         except Exception as e:
-            print(f"Database query error: {e}")
+            error_message = (
+                f"Database error | "
+                f"From: {from_number} | "
+                f"To: {to_number} | "
+                f"CallUUID: {call_uuid} | "
+                f"Error: {str(e)}"
+            )
+            print(error_message)
+            log_conn = get_db_connection()
+            if log_conn:
+                log_cursor = log_conn.cursor()
+                log_cursor.execute(
+                    "INSERT INTO lead_log_texts (message) VALUES (%s)",
+                    (error_message,)
+                )
+                log_conn.commit()
+                log_cursor.close()
+                log_conn.close()
         finally:
             if conn.is_connected():
                 cursor.close()
