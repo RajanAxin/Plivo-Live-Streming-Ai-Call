@@ -1117,7 +1117,6 @@ async def log_to_dashboard(event_type, text, conversation_state):
 
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
-    await asyncio.sleep(4)
     # Extract the caller's number (From) and your Plivo number (To)
     from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
