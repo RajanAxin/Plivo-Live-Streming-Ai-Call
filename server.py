@@ -1118,6 +1118,7 @@ async def log_to_dashboard(event_type, text, conversation_state):
 @app.route("/answer", methods=["GET", "POST"])
 async def home():
     # Extract the caller's number (From) and your Plivo number (To)
+    actual_from_number = (await request.form).get('From') or request.args.get('From')
     from_number = (await request.form).get('From') or request.args.get('From')
     from_number = from_number[1:] if from_number else None
     to_number = (await request.form).get('To') or request.args.get('To')
@@ -1155,6 +1156,20 @@ async def home():
                     WHERE lead_id = %s
                 """, (lead_data['lead_id'],))
                 conn.commit()
+            else:
+                 find_number = (
+                    f"Number Not found | "
+                    f"Actual From: {actual_from_number} | "
+                    f"From: {from_number} | "
+                    f"To: {to_number} | "
+                    f"CallUUID: {call_uuid}"
+                )
+                 n_log_cursor = conn.cursor()
+                 n_log_cursor.execute(
+                     "INSERT INTO lead_log_texts (message) VALUES (%s)",
+                     (find_number,)
+                 )
+                 conn.commit()
             # Query call number
             cursor.execute("SELECT * FROM call_number WHERE number = %s", (to_number,))
             call_number = cursor.fetchone()
