@@ -64,6 +64,14 @@ def segment_speakers(transcript_text: str):
                 Once a rule matches, STOP and return ONLY the disposition.
                 Do NOT explain reasoning.
 
+                IMPORTANT:
+                Ignore IVR or automated system messages such as:
+                - "Thank you for calling"
+                - "Your call is being recorded"
+                - "Our representative will be with you shortly"
+
+                These are NOT part of the conversation and must be ignored when applying rules.
+
                 ────────────────────────────────
                 GLOBAL HARD STOPS (HIGHEST)
                 ────────────────────────────────
@@ -233,16 +241,20 @@ def segment_speakers(transcript_text: str):
                 STOP.
                 
                 ────────────────────────────────
-                CONNECTED BUT NO DISCUSSION
+                GREETING ONLY
                 ────────────────────────────────
                 
-                RULE 14 — CONNECTED BUT NO DISCUSSION
+                RULE 14 — GREETING ONLY
                 If transcript contains:
-                - only greetings (hello, hi, hey)
+                - agent greeting
                 - agent introduction
-                - no discussion about moving
-                - no questions asked
-                - call ends quickly
+                - polite phrases such as "hello", "hi", "hey", "how are you"
+                
+                AND
+
+                there is NO customer response
+                OR
+                no discussion about moving services
                 
                 → disposition = No Answer
                 STOP.
