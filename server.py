@@ -232,31 +232,38 @@ def segment_speakers(transcript_text: str):
                 → disposition = Follow Up
                 STOP.
                 
-                ────────────────────────────────
-                CONNECTED BUT NO DISCUSSION
-                ────────────────────────────────
-                
-                RULE 14 — CONNECTED BUT NO DISCUSSION
-                If transcript contains:
-                - only greetings (hello, hi, hey)
-                - agent introduction
-                - no discussion about moving
-                - no questions asked
-                - call ends quickly
-                
-                → disposition = No Answer
-                STOP.
+               ────────────────────────────────
+               GREETING ONLY (NO DISCUSSION)
+               ────────────────────────────────
+               
+               RULE 14 — GREETING ONLY
+               
+               If the transcript contains ONLY:
+               - greetings such as "hello", "hi", "hey"
+               - short responses such as "hello?" or "yes?"
+               - agent introduction (e.g., "I'm calling from", "this is", "I'm from")
+               - polite opening phrases such as "how are you"
+               
+               AND
+               
+               there is NO:
+               - discussion about moving
+               - request for price or estimate
+               - objection or refusal
+               - booking confirmation
+               - follow-up request
+               
+               → disposition = No Answer
+               STOP.
 
                 ────────────────────────────────
                 LAST RESORT
-                ────────────────────────────────
-
+                ────────────────────────────────    
                 RULE 15 — CONNECTED (DEFAULT)
                 If:
                 - Human conversation occurred
                 → disposition = Follow Up
-                STOP.
-
+                STOP.   
                 Transcript:
                 {transcript_text}
 
