@@ -64,6 +64,20 @@ def segment_speakers(transcript_text: str):
                 Once a rule matches, STOP and return ONLY the disposition.
                 Do NOT explain reasoning.
 
+                You are a deterministic disposition classifier.
+                Apply the rules STRICTLY in order.
+                Once a rule matches, STOP and return ONLY the disposition.
+                Do NOT explain reasoning.
+
+                IMPORTANT:
+                Ignore IVR or system messages such as:
+                - "Thank you for calling"
+                - "Your call is being recorded"
+                - "Our representative will be with you shortly"
+
+                These are automated system messages and are NOT part of the customer conversation.
+                Do NOT use them when deciding the disposition.
+                
                 ────────────────────────────────
                 GLOBAL HARD STOPS (HIGHEST)
                 ────────────────────────────────
@@ -233,25 +247,26 @@ def segment_speakers(transcript_text: str):
                 STOP.
                 
                ────────────────────────────────
-               GREETING ONLY (NO DISCUSSION)
+               GREETING EXCHANGE ONLY
                ────────────────────────────────
                
-               RULE 14 — GREETING ONLY
+               RULE 14 — GREETING EXCHANGE
                
-               If the transcript contains ONLY:
-               - greetings such as "hello", "hi", "hey"
-               - short responses such as "hello?" or "yes?"
-               - agent introduction (e.g., "I'm calling from", "this is", "I'm from")
-               - polite opening phrases such as "how are you"
+               If the transcript contains:
+               - a short greeting exchange such as
+                    "hello", "hi", "hey", "how are you", "good"
                
                AND
                
-               there is NO:
-               - discussion about moving
-               - request for price or estimate
-               - objection or refusal
-               - booking confirmation
+               the conversation does NOT include:
+               - moving discussion
+               - quote request
+               - estimate request
+               - booking discussion
+               - objection
                - follow-up request
+
+                System / IVR messages should be ignored.
                
                → disposition = No Answer
                STOP.
