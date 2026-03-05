@@ -64,20 +64,6 @@ def segment_speakers(transcript_text: str):
                 Once a rule matches, STOP and return ONLY the disposition.
                 Do NOT explain reasoning.
 
-                You are a deterministic disposition classifier.
-                Apply the rules STRICTLY in order.
-                Once a rule matches, STOP and return ONLY the disposition.
-                Do NOT explain reasoning.
-
-                IMPORTANT:
-                Ignore IVR or system messages such as:
-                - "Thank you for calling"
-                - "Your call is being recorded"
-                - "Our representative will be with you shortly"
-
-                These are automated system messages and are NOT part of the customer conversation.
-                Do NOT use them when deciding the disposition.
-                
                 ────────────────────────────────
                 GLOBAL HARD STOPS (HIGHEST)
                 ────────────────────────────────
@@ -246,39 +232,31 @@ def segment_speakers(transcript_text: str):
                 → disposition = Follow Up
                 STOP.
                 
-               ────────────────────────────────
-               GREETING EXCHANGE ONLY
-               ────────────────────────────────
-               
-               RULE 14 — GREETING EXCHANGE
-               
-               If the transcript contains:
-               - a short greeting exchange such as
-                    "hello", "hi", "hey", "how are you", "good"
-               
-               AND
-               
-               the conversation does NOT include:
-               - moving discussion
-               - quote request
-               - estimate request
-               - booking discussion
-               - objection
-               - follow-up request
-
-                System / IVR messages should be ignored.
-               
-               → disposition = No Answer
-               STOP.
+                ────────────────────────────────
+                CONNECTED BUT NO DISCUSSION
+                ────────────────────────────────
+                
+                RULE 14 — CONNECTED BUT NO DISCUSSION
+                If transcript contains:
+                - only greetings (hello, hi, hey)
+                - agent introduction
+                - no discussion about moving
+                - no questions asked
+                - call ends quickly
+                
+                → disposition = No Answer
+                STOP.
 
                 ────────────────────────────────
                 LAST RESORT
-                ────────────────────────────────    
+                ────────────────────────────────
+
                 RULE 15 — CONNECTED (DEFAULT)
                 If:
                 - Human conversation occurred
                 → disposition = Follow Up
-                STOP.   
+                STOP.
+
                 Transcript:
                 {transcript_text}
 
