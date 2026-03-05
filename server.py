@@ -71,10 +71,14 @@ def segment_speakers(transcript_text: str):
                 RULE 0 — VOICE MESSAGE
                 If the transcript contains ONLY:
                 - Voicemail greetings
-                - Automated system / IVR
+                - IVR greetings
+                - Automated messages
                 - Beeps, mailbox messages
                 - No live human conversation
-
+                AND
+                - NO customer response
+                - NO back-and-forth conversation
+                
                 → disposition = Voice Message
                 STOP.
 
