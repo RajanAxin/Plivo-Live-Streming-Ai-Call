@@ -78,7 +78,7 @@ def segment_speakers(transcript_text: str):
                 AND
                 - NO customer response
                 - NO back-and-forth conversation
-                
+
                 → disposition = Voice Message
                 STOP.
 
@@ -231,12 +231,27 @@ def segment_speakers(transcript_text: str):
 
                 → disposition = Follow Up
                 STOP.
+                
+                ────────────────────────────────
+                CONNECTED BUT NO DISCUSSION
+                ────────────────────────────────
+                
+                RULE 14 — CONNECTED BUT NO DISCUSSION
+                If transcript contains:
+                - only greetings (hello, hi, hey)
+                - agent introduction
+                - no discussion about moving
+                - no questions asked
+                - call ends quickly
+                
+                → disposition = No Answer
+                STOP.
 
                 ────────────────────────────────
                 LAST RESORT
                 ────────────────────────────────
 
-                RULE 14 — CONNECTED (DEFAULT)
+                RULE 15 — CONNECTED (DEFAULT)
                 If:
                 - Human conversation occurred
                 → disposition = Follow Up
