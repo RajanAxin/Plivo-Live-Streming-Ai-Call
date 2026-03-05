@@ -252,9 +252,7 @@ def segment_speakers(transcript_text: str):
                 
                 AND
 
-                there is NO customer response
-                OR
-                no discussion about moving services
+                - there is NO customer response OR no discussion about moving services
                 
                 → disposition = No Answer
                 STOP.
