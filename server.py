@@ -77,27 +77,31 @@ def segment_speakers(transcript_text: str):
                 ────────────────────────────────
 
                 RULE 0 — VOICE MESSAGE
-                If the transcript contains ONLY:
-                - Voicemail greetings
+
+                Ignore the following when determining conversation:
+
                 - IVR greetings
-                - Automated messages
-                - Beeps, mailbox messages
-                - No live human conversation
-                AND
-                - NO customer response
-                - NO back-and-forth conversation
+                - Call recording announcements
+                - Hold messages
+                - Automated system prompts
+                - AI agent greeting lines such as:
+                  "Hi I'm from ..."
+                  "Hello this is..."
+                  "How are you today?"
+                - Ringing, silence, beeps, voicemail tones
+
+                After removing the above messages:
+
+                IF the remaining transcript contains:
+                - No customer speech
+                - No customer words
+                - No back-and-forth conversation
+                - No responses to the agent
+
+                THEN
 
                 → disposition = Voice Message
-                STOP.
-
-                RULE 1 — NO ANSWER
-                If the call rings but:
-                - No one answers
-                - Ends without voicemail
-                - Silence only
-
-                → disposition = No Answer
-                STOP.
+                STOP processing immediately.
 
                 RULE 2 — NOT CONNECTED
                 If transcript includes:
